@@ -40,7 +40,7 @@ son los del SRS de equipo.
 
 ## 2. Resumen de los SRS individuales
 
-| | I1 — Miguel Angel Arevalo Andrade | I2 — *[nombre]* | I3 — *[nombre]* | I4 — *[nombre]* |
+| | I1 — Miguel Angel Arevalo Andrade | I2 — *[nombre]* | I3 — Anthony Gerardo Gutarra Sánchez | I4 — *[nombre]* |
 |---|---|---|---|---|
 | Base | EcoAlert Tambopata (v3.0) | EcoAlert genérico (v1.0): cualquier zona del Perú | EcoAlert Tambopata | EcoAlert Tambopata |
 | Entidad central | Zona de cambio persistente que agrupa alertas | Zona de interés elegida por el usuario | Análisis de dos periodos que contiene zonas candidatas | "Cambio detectado" persistente con historial |
@@ -149,7 +149,7 @@ su resultado en el SRS de equipo.
 - **Configurabilidad de umbrales** (RF-21).
 - **Límite de resolución espacial** de 0.5–1 ha (RD-07, marca "área pequeña" de RF-13).
 
-### Integrante 3 — *[nombre y matrícula]*
+### Integrante 3 — Anthony Gerardo Gutarra Sánchez (A01840622)
 
 - **Fidelidad a la base:** ámbito Tambopata (RD-01), no atribuir causa ni legalidad (RD-02),
   prioridad como recomendación (RD-03).
@@ -433,5 +433,5 @@ la API).
 |---|:---:|:---:|---|
 | Integrante 1 — Miguel Angel Arevalo Andrade | ☑ | ☑ | Propuso las decisiones de la sección 5 a partir de los análisis del agente |
 | Integrante 2 — *[nombre]* | ☐ | ☐ | |
-| Integrante 3 — *[nombre]* | ☐ | ☐ | |
+| Integrante 3 — Anthony Gerardo Gutarra Sánchez (A01840622) | ☐ | ☐ | |
 | Integrante 4 — *[nombre]* | ☐ | ☐ | En especial C-18 a C-30, que responden a su SRS |
