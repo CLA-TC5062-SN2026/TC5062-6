@@ -5,7 +5,7 @@
 | Actividad | Parte 0 — Consolidación del SRS de equipo |
 | Fecha | 04/10/2026 |
 | Resultado | `SRS_equipo.md` v1.0 (línea base de equipo) |
-| Insumos | `insumos/SRS_integrante1_A01840503.md`, `insumos/SRS_integrante2.md`, `insumos/SRS_integrante3.md`, `insumos/SRS_integrante4.md`, `insumos/proyecto_base.md` |
+| Insumos | `insumos/SRS_integrante1_A01840503.md`, `insumos/SRS_integrante2.md`, `insumos/SRS_integrante3.md`, `insumos/SRS_integrante4_A01797466.md`, `insumos/proyecto_base.md` |
 | Análisis del agente (originales, sin editar) | `borradores/analisis_diferencias_agente.md` (I1–I3) y `borradores/analisis_diferencias_agente_addendum_I4.md` (I4) |
 
 **Convención.** Los IDs de los SRS individuales no coinciden entre sí. Por ejemplo, RF-01 es
