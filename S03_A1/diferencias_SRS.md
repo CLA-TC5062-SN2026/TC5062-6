@@ -40,7 +40,7 @@ son los del SRS de equipo.
 
 ## 2. Resumen de los SRS individuales
 
-| | I1 — Miguel Angel Arevalo Andrade | I2 — *[nombre]* | I3 — Anthony Gerardo Gutarra Sánchez | I4 — *[nombre]* |
+| | I1 — Miguel Angel Arevalo Andrade | I2 — *[nombre]* | I3 — Anthony Gerardo Gutarra Sánchez | I4 — Eduardo Daniel Sauza Machado |
 |---|---|---|---|---|
 | Base | EcoAlert Tambopata (v3.0) | EcoAlert genérico (v1.0): cualquier zona del Perú | EcoAlert Tambopata | EcoAlert Tambopata |
 | Entidad central | Zona de cambio persistente que agrupa alertas | Zona de interés elegida por el usuario | Análisis de dos periodos que contiene zonas candidatas | "Cambio detectado" persistente con historial |
