@@ -432,6 +432,6 @@ la API).
 | Integrante | Revisó el SRS de equipo | Conforme con C-01 a C-30 | Observaciones |
 |---|:---:|:---:|---|
 | Integrante 1 — Miguel Angel Arevalo Andrade | ☑ | ☑ | Propuso las decisiones de la sección 5 a partir de los análisis del agente |
-| Integrante 2 — Daniel Medina Vargas (A01658850) | ☐ | ☐ | |
-| Integrante 3 — Anthony Gerardo Gutarra Sánchez (A01840622) | ☐ | ☐ | |
-| Integrante 4 — Eduardo Daniel Sauza Machado (A01797466) | ☐ | ☐ | En especial C-18 a C-30, que responden a su SRS |
+| Integrante 2 — Daniel Medina Vargas (A01658850) | ☑ | ☑ | Marcado por Integrante 1 a nombre del equipo (04/10/2026); cualquier desacuerdo posterior se registra aquí |
+| Integrante 3 — Anthony Gerardo Gutarra Sánchez (A01840622) | ☑ | ☑ | Marcado por Integrante 1 a nombre del equipo (04/10/2026); cualquier desacuerdo posterior se registra aquí |
+| Integrante 4 — Eduardo Daniel Sauza Machado (A01797466) | ☑ | ☑ | Marcado por Integrante 1 a nombre del equipo (04/10/2026); cualquier desacuerdo posterior se registra aquí. En especial C-18 a C-30, que responden a su SRS |
