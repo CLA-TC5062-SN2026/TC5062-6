@@ -1,0 +1,5 @@
+# Submission bundles — generated artefacts, not source
+*.zip
+
+# macOS
+.DS_Store
