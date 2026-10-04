@@ -8,7 +8,7 @@
 | Fecha | 04/10/2026 |
 | Estándar de referencia | IEEE 830 (simplificado), misma estructura que S02-A1 |
 | Equipo | Equipo 6 — TC5062, Gpo 10 |
-| Integrantes | Integrante 1: Miguel Angel Arevalo Andrade (A01840503) · Integrante 2: *[nombre y matrícula]* · Integrante 3: Anthony Gerardo Gutarra Sánchez (A01840622) · Integrante 4: Eduardo Daniel Sauza Machado (A01797466) |
+| Integrantes | Integrante 1: Miguel Angel Arevalo Andrade (A01840503) · Integrante 2: Daniel Medina Vargas (A01658850) · Integrante 3: Anthony Gerardo Gutarra Sánchez (A01840622) · Integrante 4: Eduardo Daniel Sauza Machado (A01797466) |
 | Insumos | SRS individuales de S02-A1 (`insumos/`) y `insumos/proyecto_base.md` |
 | Registro de consolidación | `diferencias_SRS.md` (aportes de cada integrante, conflictos C-01 a C-30 y correspondencia de IDs) |
 

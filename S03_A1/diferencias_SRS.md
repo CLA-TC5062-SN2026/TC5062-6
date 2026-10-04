@@ -5,8 +5,8 @@
 | Actividad | Parte 0 — Consolidación del SRS de equipo |
 | Fecha | 04/10/2026 |
 | Resultado | `SRS_equipo.md` v1.0 (línea base de equipo) |
-| Insumos | `insumos/SRS_integrante1_A01840503.md`, `insumos/SRS_integrante2.md`, `insumos/SRS_integrante3.md`, `insumos/SRS_integrante4_A01797466.md`, `insumos/proyecto_base.md` |
-| Análisis del agente (originales, sin editar) | `borradores/analisis_diferencias_agente.md` (I1–I3) y `borradores/analisis_diferencias_agente_addendum_I4.md` (I4) |
+| Insumos | `insumos/SRS_integrante1_A01840503.md`, `insumos/SRS_integrante2_A01658850.md`, `insumos/SRS_integrante3.md`, `insumos/SRS_integrante4_A01797466.md`, `insumos/proyecto_base.md` |
+| Análisis del agente (originales, sin editar) | `borradores/analisis_diferencias_agente.md` (I1–I3) y `borradores/analisis_diferencias_agente_addendum_I4.md` (I4). Citan los insumos con su nombre original (`SRS_integrante2.md`, `SRS_integrante4.md`), renombrados después con la matrícula de su autor |
 
 **Convención.** Los IDs de los SRS individuales no coinciden entre sí. Por ejemplo, RF-01 es
 "mapa con capas" en I1, "zona y periodos" en I2 y "autenticación" en I3. Por eso, en este documento
@@ -40,7 +40,7 @@ son los del SRS de equipo.
 
 ## 2. Resumen de los SRS individuales
 
-| | I1 — Miguel Angel Arevalo Andrade | I2 — *[nombre]* | I3 — Anthony Gerardo Gutarra Sánchez | I4 — Eduardo Daniel Sauza Machado |
+| | I1 — Miguel Angel Arevalo Andrade | I2 — Daniel Medina Vargas | I3 — Anthony Gerardo Gutarra Sánchez | I4 — Eduardo Daniel Sauza Machado |
 |---|---|---|---|---|
 | Base | EcoAlert Tambopata (v3.0) | EcoAlert genérico (v1.0): cualquier zona del Perú | EcoAlert Tambopata | EcoAlert Tambopata |
 | Entidad central | Zona de cambio persistente que agrupa alertas | Zona de interés elegida por el usuario | Análisis de dos periodos que contiene zonas candidatas | "Cambio detectado" persistente con historial |
@@ -135,7 +135,7 @@ su resultado en el SRS de equipo.
 - **Formato:** convención de IDs inmutables `RF-XX-AC-Y`, tipos de verificación y prioridad MoSCoW.
 - **Mejoras Should y Could:** RF-18 a RF-33, en su mayoría versiones reducidas de sus RF.
 
-### Integrante 2 — *[nombre y matrícula]*
+### Integrante 2 — Daniel Medina Vargas (A01658850)
 
 - **Necesidades del usuario que no estaban en los otros SRS:** aviso de fuente desactualizada con
   datos en caché (RF-07, RNF-08), desfase de 1–4 semanas de las fuentes (RD-08) y no fusionar
@@ -165,7 +165,7 @@ su resultado en el SRS de equipo.
 - **RNF medibles:** retroalimentación en 60 s (RNF-04), trazabilidad (RNF-07) y robustez (RNF-08).
 - **Formato:** Given-When-Then con IDs, un comportamiento por criterio.
 
-### Integrante 4 —  Eduardo Daniel Sauza Machado (A01797466)
+### Integrante 4 — Eduardo Daniel Sauza Machado (A01797466)
 
 - **Trabajo diario del analista:**
   - observaciones libres sobre la zona (RF-34);
@@ -432,6 +432,6 @@ la API).
 | Integrante | Revisó el SRS de equipo | Conforme con C-01 a C-30 | Observaciones |
 |---|:---:|:---:|---|
 | Integrante 1 — Miguel Angel Arevalo Andrade | ☑ | ☑ | Propuso las decisiones de la sección 5 a partir de los análisis del agente |
-| Integrante 2 — *[nombre]* | ☐ | ☐ | |
+| Integrante 2 — Daniel Medina Vargas (A01658850) | ☐ | ☐ | |
 | Integrante 3 — Anthony Gerardo Gutarra Sánchez (A01840622) | ☐ | ☐ | |
-| Integrante 4 — *[nombre]* | ☐ | ☐ | En especial C-18 a C-30, que responden a su SRS |
+| Integrante 4 — Eduardo Daniel Sauza Machado (A01797466) | ☐ | ☐ | En especial C-18 a C-30, que responden a su SRS |
