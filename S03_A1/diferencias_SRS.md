@@ -165,7 +165,7 @@ su resultado en el SRS de equipo.
 - **RNF medibles:** retroalimentación en 60 s (RNF-04), trazabilidad (RNF-07) y robustez (RNF-08).
 - **Formato:** Given-When-Then con IDs, un comportamiento por criterio.
 
-### Integrante 4 — *[nombre y matrícula]*
+### Integrante 4 —  Eduardo Daniel Sauza Machado (A01797466)
 
 - **Trabajo diario del analista:**
   - observaciones libres sobre la zona (RF-34);
