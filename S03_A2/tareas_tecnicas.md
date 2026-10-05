@@ -31,8 +31,9 @@
   Sprint 2 se conecta al inicio de sesión (HU-E1-1) y se escriben `test_RF_03_AC_12` y
   `test_RF_04_AC_7`. Mientras tanto, la API solo corre en local y en CI.
 - **Tablero:** cada tarea es un **sub-issue** de su historia en GitHub Projects: HU-E2-1 → #4,
-  HU-E2-2 → #5, HU-E2-3 → #6. Las tareas T-HAB, T-CIE y T-PO cuelgan de un issue nuevo,
-  "Sprint 1 — Habilitación técnica y cierre".
+  HU-E2-2 → #5, HU-E2-3 → #6. Las tareas T-HAB, T-CIE y T-PO cuelgan del issue #16,
+  "Sprint 1 — Habilitación técnica y cierre". Los sub-issues son #17–#61, con las etiquetas `tarea` y
+  `sprint: 1` (y `meta extendida` las de HU-E2-3).
 
 ---
 
