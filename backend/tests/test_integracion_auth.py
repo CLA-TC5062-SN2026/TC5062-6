@@ -3,6 +3,7 @@
 Cubre lo que ninguna suite prueba por separado: roles sobre los datos de A1, cuentas creadas por A1 que inician sesión
 con el verificador de A2, contraseña temporal, revocación inmediata de tokens y conformidad con el contrato integrado.
 """
+import json
 import uuid
 
 import pytest
@@ -102,6 +103,23 @@ def test_register_es_alias_de_post_usuarios_con_la_misma_idempotencia(api, api_a
     assert api('POST', f'{API}/auth/register', cuerpo).estado == 400  # sin Idempotency-Key
     assert api('POST', f'{API}/auth/register', {**cuerpo, 'rol': 'coordinacion'}, cabeceras).json['codigo'] == 'IDEMPOTENCIA_CONFLICTO'
     assert api_analista('POST', f'{API}/auth/register', cuerpo, clave()).estado == 403
+
+
+def test_la_clave_de_idempotencia_pertenece_a_la_cuenta_que_la_uso(api, abrir_sesion, bd):
+    otra = abrir_sesion('coordinacion')
+    cuerpo = {**CUENTA, 'correo': correo_nuevo()}
+    cabeceras = clave()
+    creada = api('POST', f'{API}/usuarios', cuerpo, cabeceras)
+    assert creada.estado == 201
+    for ruta in ('/usuarios', '/auth/register'):  # misma clave y mismo cuerpo, pero otra cuenta
+        ajena = otra('POST', API + ruta, cuerpo, cabeceras)
+        assert ajena.estado == 422 and ajena.json['codigo'] == 'IDEMPOTENCIA_CONFLICTO', ruta
+        assert creada.json['id'] not in json.dumps(ajena.json) and 'Location' not in ajena.cabeceras
+    assert bd('SELECT count(*) FROM usuarios WHERE correo = %s', (cuerpo['correo'],))[0][0] == 1
+    dueno = api('POST', f'{API}/auth/register', cuerpo, cabeceras)  # la cuenta duena sigue pudiendo reintentar
+    assert dueno.estado == 201 and dueno.json == creada.json
+    assert bd('SELECT operacion FROM claves_idempotencia WHERE clave = %s', (cabeceras['Idempotency-Key'],))[0][0] \
+        == f'crearUsuario:{api.id}'
 
 
 def test_me_cumple_el_contrato(api, conforme):

@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from psycopg.errors import UniqueViolation
 
 from app import db
-from app.dependencies import solo_coordinacion
+from app.dependencies import Identidad, solo_coordinacion
 from app.errors import ApiError, encontrado
 from app.schemas import Usuario, UsuarioActualizar, UsuarioCrear, UsuarioReemplazar
 from app.security import hashear
@@ -23,9 +23,12 @@ def exigir_merge_patch(request: Request):
         raise ApiError(415, 'TIPO_CONTENIDO_NO_SOPORTADO', 'Usa Content-Type application/merge-patch+json')
 
 
-def insertar_usuario(body: UsuarioCrear, request: Request, response: Response, clave: UUID):
-    """Alta idempotente de la cuenta, activa y con contraseña temporal (RF-02-AC-1). Compartida con /auth/register."""
-    operacion = 'crearUsuario'
+def insertar_usuario(body: UsuarioCrear, request: Request, response: Response, clave: UUID, actor: UUID):
+    """Alta idempotente de la cuenta, activa y con contraseña temporal (RF-02-AC-1). Compartida con /auth/register.
+
+    La clave se guarda asociada a la cuenta `actor` (columna `operacion`): otra cuenta que la reutilice recibe 422.
+    """
+    operacion = f'crearUsuario:{actor}'
     huella = db.huella(body.model_dump(mode='json'))
     with db.transaction() as conn:
         previa = db.respuesta_previa(conn, clave, operacion, huella)
@@ -53,8 +56,8 @@ def listar_usuarios(activo: bool | None = None):
 
 @router.post('', status_code=201, response_model=Usuario)
 def crear_usuario(body: UsuarioCrear, request: Request, response: Response,
-                  idempotency_key: Annotated[UUID, Header()]):
-    return insertar_usuario(body, request, response, idempotency_key)
+                  idempotency_key: Annotated[UUID, Header()], identidad: Identidad = Depends(solo_coordinacion)):
+    return insertar_usuario(body, request, response, idempotency_key, identidad.usuario['id'])
 
 
 @router.get('/{usuarioId}', response_model=Usuario)

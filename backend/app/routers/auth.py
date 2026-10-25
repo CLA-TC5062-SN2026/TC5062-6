@@ -41,10 +41,11 @@ def login(body: CredencialesLogin, response: Response, cfg: Settings = Depends(g
                         inactividad_max_segundos=cfg.sesion_inactividad_segundos, usuario=usuario)
 
 
-@protegido.post('/register', status_code=201, response_model=Usuario, dependencies=[Depends(solo_coordinacion)])
-def register(body: UsuarioCrear, request: Request, response: Response, idempotency_key: Annotated[UUID, Header()]):
+@protegido.post('/register', status_code=201, response_model=Usuario)
+def register(body: UsuarioCrear, request: Request, response: Response, idempotency_key: Annotated[UUID, Header()],
+             identidad: Identidad = Depends(solo_coordinacion)):
     # RF-02: solo Coordinación crea cuentas; no existe registro anónimo (RNF-01). Misma lógica que POST /usuarios.
-    return insertar_usuario(body, request, response, idempotency_key)
+    return insertar_usuario(body, request, response, idempotency_key, identidad.usuario['id'])
 
 
 # me, logout y password solo exigen sesión válida: son las únicas operaciones permitidas

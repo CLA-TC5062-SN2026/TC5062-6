@@ -85,7 +85,7 @@ Si PowerShell bloquea la activación del entorno: `Set-ExecutionPolicy -Scope Pr
 - **401** sin token, con token inválido o expirado, o con la sesión cerrada, inactiva o de una cuenta desactivada. **403** `ROL_NO_PERMITIDO` si el rol no tiene acceso; **403** `CAMBIO_PASSWORD_REQUERIDO` mientras la contraseña sea temporal (solo `me`, `logout` y `password` quedan abiertos).
 - El rol y el estado de la cuenta se leen de la base en cada petición: desactivar una cuenta (con `PUT` o `PATCH`) o cambiar su rol surte efecto al instante, y al desactivar se revocan sus sesiones.
 - **Contraseñas:** las cuentas nuevas se guardan con **Argon2id** (como en A1). El login verifica Argon2id y bcrypt (hashes heredados de A2); un hash bcrypt válido se migra a Argon2id al iniciar sesión. Una contraseña nueva tiene de 12 a 128 caracteres; en el login se aceptan hasta 1024. Un hash ausente, ilegible o incompatible nunca lanza error 500: se responde el mismo 401 genérico que para una contraseña incorrecta.
-- `POST /usuarios` y `POST /auth/register` exigen `Idempotency-Key` (UUID) y comparten la misma lógica: durante 24 h, repetir la clave con el mismo cuerpo devuelve la respuesta original y con cualquier cambio (incluida la contraseña temporal) responde `422 IDEMPOTENCIA_CONFLICTO`. La huella es un HMAC-SHA256 del JSON canónico del cuerpo completo; solo se almacenan respuestas 2xx.
+- `POST /usuarios` y `POST /auth/register` exigen `Idempotency-Key` (UUID) y comparten la misma lógica: durante 24 h, repetir la clave con el mismo cuerpo devuelve la respuesta original y con cualquier cambio (incluida la contraseña temporal) responde `422 IDEMPOTENCIA_CONFLICTO`. La huella es un HMAC-SHA256 del JSON canónico del cuerpo completo; solo se almacenan respuestas 2xx. **La clave pertenece a la cuenta autenticada que la usó**: otra cuenta que la repita, aun con el mismo cuerpo, recibe `422` y nunca la respuesta guardada (se guarda en `claves_idempotencia.operacion` como `crearUsuario:<id de la cuenta>`, sin cambiar el esquema SQL).
 - `PUT` y `PATCH` de usuarios comparten una función transaccional (regla de la última coordinación también al quitar el rol, cierre de sesiones al desactivar, correo inmutable). `PATCH` exige `application/merge-patch+json` (415 si no). `PUT` se añadió al contrato como propuesta adoptada para cumplir la actividad, sin aprobación formal de todos los integrantes (`S05_S06_A1/diferencias_diseno.md`, API-13).
 - `GET /salud` (fuera de `/api/v1`) es público y solo informa si la base responde.
 
@@ -150,7 +150,7 @@ En VS Code: abrir la carpeta del repositorio, seleccionar el intérprete `backen
 | `tests/sql/integridad.sql` + `test_integridad_sql.py` | 22 tablas, claves, PostGIS (EPSG:32719) y 35 casos de restricciones, en una transacción que se revierte |
 | `tests/test_contrato.py` | Contrato integrado válido, 39 operaciones, relación con los contratos originales de A1 y A2, 166 criterios Must del SRS, 62 schemas = 62 clases UML y 20 rutas del backend contenidas en el contrato |
 | `tests/test_api_lecturas.py`, `tests/test_api_usuarios.py` | Lecturas, POST/GET/PUT/PATCH, idempotencia HMAC, concurrencia y regla de la última coordinación, con una sesión JWT de Coordinación |
-| `tests/test_integracion_auth.py` | Roles sobre los datos de A1, login de cuentas creadas por A1, contraseña temporal, revocación inmediata con PUT/PATCH, `register` idempotente, hashes bcrypt/ilegibles y contraseñas largas |
+| `tests/test_integracion_auth.py` | Roles sobre los datos de A1, login de cuentas creadas por A1, contraseña temporal, revocación inmediata con PUT/PATCH, `register` idempotente, clave de idempotencia no reutilizable entre cuentas, hashes bcrypt/ilegibles y contraseñas largas |
 | `S05_S06_A2/pruebas/test_auth.py`, `test_security.py`, `test_config.py` | Login, registro, JWT (firma, expiración, `alg`), sesiones, cambio de contraseña, hash y configuración |
 | `S05_S06_A2/pruebas/test_proteccion_rutas.py` | 401 sin token y 403 por rol en **todas** las rutas montadas, según los `x-roles` del contrato integrado |
 | `S05_S06_A2/pruebas/pruebas_manuales.sh` | Pruebas manuales con `curl` (API en marcha, bash) |
@@ -159,14 +159,38 @@ Variables opcionales: `TEST_DB_NAME` / `TEST_DATABASE_URL` (base de A1) y `TEST_
 
 ### Verificación local (25/10/2026)
 Entorno: Windows, Python 3.13.7, Docker Engine 29.8.0, `postgis/postgis:17-3.5` (PostgreSQL 17.5, PostGIS 3.5.2).
-- **`python -m pytest`:** 225 de 225 aprobadas (101 de A1 + integración y 124 de A2), también por separado y en orden inverso.
+- **`python -m pytest`:** 226 de 226 aprobadas (102 de A1 e integración y 124 de A2), también por separado y en orden inverso.
+- **Newman** (colección integrada, base `ecoalert_postman_test`): 43 requests (48 solicitudes HTTP), 58 aserciones, 0 fallos, en 3 corridas seguidas sin limpiar la base.
 - **Prueba de humo contra uvicorn y PostgreSQL reales:** creación de la Coordinación con la CLI, login, 401 sin token y con token alterado, reintento idempotente, `PUT`/`PATCH`/`DELETE`, `register`, contraseña temporal, cambio de contraseña, revocación al desactivar y logout; todos los códigos coinciden con el contrato.
-- **Sin verificar:** operaciones no implementadas, rendimiento (RNF-04) y las colecciones Postman originales contra el backend integrado (usan el contrato anterior; ver `S05_S06_integracion/integracion.md`).
+- **Sin verificar:** operaciones no implementadas (19 de 39; lista en `S05_S06_integracion/integracion.md`), rendimiento (RNF-04) y las colecciones Postman originales de A1 y A2 contra el backend integrado (usan el contrato anterior).
+
+### Colección Postman de la API integrada
+`S05_S06_integracion/postman/` contiene `EcoAlert_integrada.postman_collection.json` y su entorno. Hace login JWT (el token se guarda y se envía como Bearer), usa `Idempotency-Key` y cubre POST, GET, PUT y PATCH de usuarios, las lecturas de A1 con JWT, 401, 403, contraseña temporal, revocación de sesiones, logout e idempotencia entre cuentas. No sustituye a las colecciones originales de A1 y A2, que no se tocaron.
+
+Requiere una base `*_test` con la semilla de A1 y una cuenta de Coordinación. **El orden importa**: la CLI se niega si ya existe cualquier cuenta de coordinación y la semilla trae una, así que la CLI va antes de la semilla. Desde `backend`, con el entorno virtual activo y el usuario y la clave de `DATABASE_URL` de `.env`:
+
+```powershell
+docker exec ecoalert_db psql -U ecoalert -d postgres -c "CREATE DATABASE ecoalert_postman_test"
+docker cp ..\S05_S06_A1\esquema_bd.sql ecoalert_db:/tmp/esquema_bd.sql
+docker exec ecoalert_db psql -U ecoalert -d ecoalert_postman_test -v ON_ERROR_STOP=1 -f /tmp/esquema_bd.sql
+$env:DATABASE_URL = 'postgresql://<usuario>:<clave>@localhost:5432/ecoalert_postman_test'
+python -m app.cli crear-coordinacion --nombre "Coordinación Demo" --correo coordinacion@ecoalert.pe
+docker cp .\tests\sql\semilla.sql ecoalert_db:/tmp/semilla.sql
+docker exec ecoalert_db psql -U ecoalert -d ecoalert_postman_test -v ON_ERROR_STOP=1 -f /tmp/semilla.sql
+python -m uvicorn app.main:app --port 8001 --env-file .env
+```
+
+Luego, en Postman, importar la colección y el entorno, escribir la contraseña de la cuenta en el valor actual de `coordPassword` y ejecutar la colección; o bien desde la raíz del repositorio:
+
+```powershell
+npx --yes newman run S05_S06_integracion/postman/EcoAlert_integrada.postman_collection.json -e S05_S06_integracion/postman/EcoAlert_integrada.postman_environment.json --env-var coordPassword=<contraseña>
+```
+
+El request 0.3 falla si la API no apunta a una base sembrada (espera 4 alertas publicables). Los correos y las claves se generan en cada corrida, así que se puede repetir sin limpiar la base.
 
 ## Limitaciones
 - El modelo SQL y las vistas OpenAPI no son equivalentes 1:1; los DTO se construyen en la API.
 - Las alertas sin zona o sin área no se publican en `GET /alertas` (el contrato exige ambas).
 - Una respuesta `405` incluye `Allow` solo con los métodos de la primera ruta coincidente, no con todos los permitidos; no afecta al contrato.
 - Si se rota `IDEMPOTENCY_SECRET`, las claves de las últimas 24 h dejan de coincidir y sus reintentos responderán `422`.
-- `claves_idempotencia` no está ligada a la cuenta que hizo la solicitud: quien repita una clave con el mismo cuerpo recibe la respuesta guardada.
 - La verificación de una cuenta con hash bcrypt tarda algo más que la de una Argon2id; es la única diferencia de tiempo entre cuentas existentes.
