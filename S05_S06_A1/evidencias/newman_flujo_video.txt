@@ -1,0 +1,51 @@
+newman
+EcoAlert — Servicios CRUD (S05-S06-A1)
+❏ 0. Preparación (antes de grabar)
+↳ Login de Coordinación
+  POST http://127.0.0.1:8000/api/v1/auth/login [200 OK, 1.01kB, 195ms]
+  ✓  Responde 200
+❏ 1. Video (grabar en este orden)
+↳ 1 · POST /usuarios (crear cuenta)
+  POST http://127.0.0.1:8000/api/v1/usuarios [201 Created, 616B, 177ms]
+  ✓  Responde 201
+  ✓  Incluye Location
+↳ 2 · GET /usuarios/{id} (el POST persistió)
+  GET http://127.0.0.1:8000/api/v1/usuarios/a18b570e-e8c2-4b6e-9802-b84796a91bf8 [200 OK, 546B, 5ms]
+  ✓  Responde 200
+  ✓  Es la cuenta creada
+↳ 3 · PATCH /usuarios/{id} (editar nombre)
+  PATCH http://127.0.0.1:8000/api/v1/usuarios/a18b570e-e8c2-4b6e-9802-b84796a91bf8 [200 OK, 556B, 6ms]
+  ✓  Responde 200
+↳ 4 · GET /usuarios?activo=true (la edición persistió)
+  GET http://127.0.0.1:8000/api/v1/usuarios?activo=true [200 OK, 2.73kB, 5ms]
+  ✓  Responde 200
+  ✓  Aparece con el nombre editado
+↳ 5 · POST /auth/login (la cuenta nueva inicia sesión)
+  POST http://127.0.0.1:8000/api/v1/auth/login [200 OK, 1.03kB, 181ms]
+  ✓  Responde 200
+↳ 6 · PUT /auth/password (cambiar contraseña temporal)
+  PUT http://127.0.0.1:8000/api/v1/auth/password [204 No Content, 293B, 373ms]
+  ✓  Responde 204
+↳ 7 · DELETE /usuarios/{id} (no se borran cuentas: 405)
+  DELETE http://127.0.0.1:8000/api/v1/usuarios/a18b570e-e8c2-4b6e-9802-b84796a91bf8 [405 Method Not Allowed, 498B, 1ms]
+  ✓  Responde 405
+  ✓  Código METODO_NO_PERMITIDO
+┌─────────────────────────┬────────────────────┬───────────────────┐
+│                         │           executed │            failed │
+├─────────────────────────┼────────────────────┼───────────────────┤
+│              iterations │                  1 │                 0 │
+├─────────────────────────┼────────────────────┼───────────────────┤
+│                requests │                  8 │                 0 │
+├─────────────────────────┼────────────────────┼───────────────────┤
+│            test-scripts │                  8 │                 0 │
+├─────────────────────────┼────────────────────┼───────────────────┤
+│      prerequest-scripts │                  1 │                 0 │
+├─────────────────────────┼────────────────────┼───────────────────┤
+│              assertions │                 12 │                 0 │
+├─────────────────────────┴────────────────────┴───────────────────┤
+│ total run duration: 1028ms                                       │
+├──────────────────────────────────────────────────────────────────┤
+│ total data received: 4.71kB (approx)                             │
+├──────────────────────────────────────────────────────────────────┤
+│ average response time: 117ms [min: 1ms, max: 373ms, s.d.: 127ms] │
+└──────────────────────────────────────────────────────────────────┘
