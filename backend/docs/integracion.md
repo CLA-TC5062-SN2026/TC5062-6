@@ -1,19 +1,20 @@
-# Integración de S05-S06-A1 y S05-S06-A2
+# Integración técnica del backend (A1 + A2)
 
-Documento de la rama `integracion/a1-a2`. Describe cómo se unieron el backend de **A1** (commit `eef17f5`, rama
+Documentación técnica auxiliar del backend compartido. Los entregables de la rúbrica son `S05_S06_A1/` y `S05_S06_A2/`; este
+documento no es una actividad adicional. Describe cómo se unieron el backend de **A1** (commit `eef17f5`, rama
 `fix/s05-s06-validacion`) y el de **A2** (JWT, sesiones y roles, en `origin/main`), qué contratos y evidencias se conservan
 y qué queda pendiente. Los entregables originales **no se modificaron**: `S05_S06_A1/` es idéntico a `eef17f5`
-(`git diff fix/s05-s06-validacion -- S05_S06_A1/` no muestra diferencias) y los documentos, el contrato y las evidencias de
-`S05_S06_A2/` son los de `origin/main`.
+(`git diff fix/s05-s06-validacion -- S05_S06_A1/` no muestra diferencias) y los documentos, el contrato y las evidencias
+originales de `S05_S06_A2/` son los de `origin/main`.
 
-## 1. Qué contiene cada carpeta
+## 1. Dónde está cada cosa
 
-| Carpeta | Contenido | Estado |
+| Ubicación | Contenido | Estado |
 |---|---|---|
 | `S05_S06_A1/` | Contrato OpenAPI v1.2.0 de A1 (con `PUT`), esquema SQL, diagramas, colección Postman y `pruebas_postman.mp4` | Sin cambios respecto de `eef17f5` |
-| `S05_S06_A2/` | Contrato v1.2.0 de A2 (autenticación), revisión de seguridad, evidencias, colección Postman y, ahora, `pruebas/` con sus pruebas automatizadas y el script de pruebas manuales | Originales intactos; solo se añadió `pruebas/` |
-| `S05_S06_integracion/` | Contrato integrado `openapi_integrado.yaml` (v1.3.0), este documento, `postman/` (colección y entorno para la API integrada) y `antecedentes_main_A1/` (aportes de Miguel en `origin/main` para A1) | Nuevo |
-| `backend/` | Backend único: A1 como base y la seguridad de A2 integrada | Modificado (ver README) |
+| `S05_S06_A2/` | Contrato v1.2.0 de A2 (autenticación), revisión de seguridad, evidencias y colección Postman originales; para demostrar la seguridad del backend final se añadieron `pruebas/` (pruebas automatizadas y script de pruebas manuales), `postman/EcoAlert_Auth_S05_S06_A2_backend_final.*` (colección y entorno) y `evidencias/newman_backend_final.txt` | Originales intactos; solo se añadieron esos archivos |
+| `backend/` | Backend único: A1 como base y la seguridad de A2 integrada; pruebas de A1 en `tests/` | Modificado (ver README) |
+| `backend/docs/` | Este documento, el contrato integrado `openapi_integrado.yaml` (v1.3.0), que implementa el backend y verifican las pruebas, y `antecedentes_main_A1/` (aportes de Miguel en `origin/main` para A1) | Documentación técnica auxiliar |
 
 ## 2. Contrato integrado
 
@@ -71,9 +72,10 @@ No se incorporaron: `serializacion.py` de A2 (A1 usa modelos de respuesta) ni lo
 ## 5. Evidencias originales
 
 - **Intactos:** `S05_S06_A1/pruebas_postman.mp4`, las tres colecciones/entornos Postman de A1 y toda la carpeta `S05_S06_A1/`; en `S05_S06_A2/`, la colección Postman, `evidencias/`, `revision_seguridad.md`, `paso_a_paso_video.md`, el contrato y el UML.
-- **Ya no se reproducen tal cual contra el backend integrado** (describen los backends originales, no se alteraron para ocultarlo):
-  - Postman de A1: no envía `Authorization`; sus solicitudes a `/api/v1` responderían 401 (solo `/salud` es público).
-  - Postman de A2: su primer request de registro no envía `Idempotency-Key` y respondería 400. No se ejecutó Newman con ninguna de las dos originales; es una conclusión por lectura de las colecciones. Para el backend integrado se añadió `postman/EcoAlert_integrada.postman_collection.json`.
+- **Ya no se reproducen tal cual contra el backend final** (describen los backends originales, no se alteraron para ocultarlo). Se ejecutaron con Newman contra el backend final:
+  - Postman de A1 (`EcoAlert_S05_S06_A1`, con su entorno de pruebas): 31 de 34 requests responden 401 porque no envía `Authorization` (solo `/salud` es público); 59 de 68 aserciones fallan.
+  - Postman de A2 (`EcoAlert_Auth_S05_S06_A2`): su registro no envía `Idempotency-Key` y responde 400; arrastra los pasos 2, 3 y 6 (5 de 9 aserciones fallan). Los pasos de login de Coordinación, listado y 401 sin token pasan.
+  - Para el backend final se añadió `S05_S06_A2/postman/EcoAlert_Auth_S05_S06_A2_backend_final.postman_collection.json`, con su entorno y la evidencia `S05_S06_A2/evidencias/newman_backend_final.txt`.
   - `S05_S06_A2/evidencias/pruebas_manuales_curl.txt` es la salida del backend original de A2 (hashes bcrypt, registro sin clave).
   - Los documentos de A2 citan `backend/scripts/pruebas_manuales.sh` y `tests/test_auth.py`, `test_security.py`, `test_config.py` y `test_proteccion_rutas.py`; ahora están en `S05_S06_A2/pruebas/`. Sus cifras (101 pruebas, 30 en `test_auth.py`, 16 en `test_security.py`) corresponden al backend original.
 - Las pruebas automatizadas de A2 se movieron de `backend/tests/` a `S05_S06_A2/pruebas/` con las adaptaciones de la sección 4. Se conservaron todas sus aserciones de seguridad; las que cambian son las de algoritmo de hash (de bcrypt a Argon2id), el límite de 72 bytes (ahora 128), las cabeceras de PATCH y la clave de idempotencia.
@@ -82,7 +84,7 @@ No se incorporaron: `serializacion.py` de A2 (A1 usa modelos de respuesta) ni lo
 
 `origin/main` trae, dentro del área de A1, trabajo de Miguel hecho sobre el backend de A1 original (`9f5070d`). Para dejar
 `S05_S06_A1/` exactamente como en `eef17f5`, esos archivos **no se copiaron a esa carpeta**; se conservan, byte a byte
-desde `origin/main`, en `S05_S06_integracion/antecedentes_main_A1/`:
+desde `origin/main`, en `backend/docs/antecedentes_main_A1/`:
 
 | Archivo | Qué es |
 |---|---|
@@ -157,7 +159,7 @@ Entorno: Windows, Python 3.13.7, PostgreSQL 17.5 + PostGIS 3.5.2 en Docker, Node
 | Verificación | Resultado |
 |---|---|
 | `python -m pytest` desde `backend` (ambas suites) | **226 de 226** (102 de A1 e integración en `ecoalert_test` + 124 de A2 en `ecoalert_auth_test`); también por separado, en orden inverso y desde la raíz |
-| Newman, `postman/EcoAlert_integrada.postman_collection.json`, API en el 8001 sobre una base nueva `ecoalert_postman_test` | 43 requests (48 solicitudes HTTP con las 5 `pm.sendRequest` de verificación), 58 aserciones, **0 fallos**, 3 corridas seguidas sin limpiar la base |
+| Newman, `S05_S06_A2/postman/EcoAlert_Auth_S05_S06_A2_backend_final.postman_collection.json`, API en el 8001 sobre una base nueva `ecoalert_postman_test` | 43 requests (48 solicitudes HTTP con las 5 `pm.sendRequest` de verificación), 58 aserciones, **0 fallos**, 3 corridas seguidas sin limpiar la base; salida en `S05_S06_A2/evidencias/newman_backend_final.txt` |
 | 401 | Matriz de A2 sobre todas las rutas montadas (sin token y con token inválido), token alterado/expirado/sin `exp`/`alg: none`, sesión inactiva (29 y 31 min), cerrada o de cuenta desactivada; Newman 2.1, 2.2, 2.11, 2.12 y 2.15 |
 | 403 | `ROL_NO_PERMITIDO` según los `x-roles` del contrato en todas las rutas y `CAMBIO_PASSWORD_REQUERIDO` sobre las rutas de A1; Newman 2.5, 2.8 y 2.9 |
 | Revocación de sesiones | Logout, cambio de contraseña (cierra las demás sesiones) y desactivación con `PUT` o `PATCH` (el token deja de servir al instante); Newman 2.10 a 2.15 |
@@ -172,7 +174,7 @@ coordinación (inactiva) y la CLI se niega a crear la primera si ya existe cualq
 
 - Decidir el destino de los aportes de `origin/main` en `S05_S06_A1/` antes de abrir el Pull Request (sección 6).
 - Actualizar `S05_S06_A1/revision_sql.md` y `diferencias_diseno.md` para reflejar la integración: no se hizo por la restricción de dejar esa carpeta intacta.
-- Las colecciones Postman originales de A1 y A2 y las evidencias de A2 describen los backends anteriores (sección 5); no se ejecutaron contra el backend integrado.
+- Las colecciones Postman originales de A1 y A2 y las evidencias de A2 describen los backends anteriores (sección 5); se conservan sin cambios y no funcionan contra el backend final.
 - La CLI de A2 se niega a crear la primera Coordinación si existe una cuenta de coordinación inactiva (caso de la semilla de A1); es el comportamiento original de A2 y se evita con el orden de preparación.
 - Si se rota `IDEMPOTENCY_SECRET`, las claves de las últimas 24 h dejan de coincidir; `IDEMPOTENCY_SECRET` debe estar en el entorno del proceso (`--env-file`), a diferencia de las variables JWT, que también se leen de `.env`.
 - 19 de las 39 operaciones del contrato siguen sin implementar (sección 7).

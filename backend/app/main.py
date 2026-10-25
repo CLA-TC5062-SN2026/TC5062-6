@@ -1,6 +1,6 @@
 """EcoAlert: API REST con autenticación JWT, control de acceso por rol y los servicios CRUD de S05-S06-A1.
 
-Implementa un subconjunto del contrato integrado (S05_S06_integracion/openapi_integrado.yaml); ver README para el alcance.
+Implementa un subconjunto del contrato integrado (backend/docs/openapi_integrado.yaml); ver README para el alcance.
 """
 from contextlib import asynccontextmanager
 

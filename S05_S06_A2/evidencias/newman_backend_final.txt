@@ -1,0 +1,219 @@
+newman
+
+EcoAlert — Autenticación JWT y seguridad, backend final (S05-S06-A2)
+
+□ 0. Preparación y guardas
+└ 0.1 GET /salud - la API responde y llega a PostgreSQL (público, fuera del contrato)
+  GET http://localhost:8001/salud [200 OK, 158B, 29ms]
+  √  200 OK
+  √  API conectada a PostgreSQL
+
+└ 0.2 POST /auth/login - Coordinación obtiene su JWT (200)
+  POST http://localhost:8001/api/v1/auth/login [200 OK, 1.01kB, 73ms]
+  √  200 OK (define coordPassword en el entorno con la contraseña de la cuenta de Coordinación)
+  √  SesionCreada: bearer, expires_in e inactividad
+  √  La respuesta no se cachea y no expone la contraseña ni su hash
+  √  La cuenta es de Coordinación y ya definió su contraseña
+
+└ 0.3 GET /alertas - la API usa la base de pruebas sembrada (A1 con JWT)
+  GET http://localhost:8001/api/v1/alertas?limite=1 [200 OK, 594B, 12ms]
+  √  200 OK
+  √  La API apunta a una base *_test con la semilla de A1 (4 alertas publicables)
+
+□ 1. Usuarios con JWT: POST, GET, PUT y PATCH
+└ 1.1 POST /usuarios - crear analista con Idempotency-Key (201)
+  POST http://localhost:8001/api/v1/usuarios [201 Created, 606B, 71ms]
+  √  201 Created con Location
+  √  Cuenta activa, con contraseña temporal y sin contraseña en la respuesta
+
+└ 1.2 GET /usuarios/{usuarioId} - persistencia del POST (200)
+  GET http://localhost:8001/api/v1/usuarios/077054f2-f3c4-46a1-8e50-a79657e95b7c [200 OK, 536B, 12ms]
+  √  200 OK
+  √  Lo consultado es lo creado
+
+└ 1.3 POST /usuarios - reintento con la misma clave y cuerpo devuelve la respuesta original (201)
+  POST http://localhost:8001/api/v1/usuarios [201 Created, 606B, 16ms]
+  √  201 con la misma cuenta y el mismo Location, sin crear otra
+
+└ 1.4 PUT /usuarios/{usuarioId} - reemplazar los campos editables (200)
+  PUT http://localhost:8001/api/v1/usuarios/077054f2-f3c4-46a1-8e50-a79657e95b7c [200 OK, 550B, 16ms]
+  √  200 OK: PUT reemplaza nombre_completo, rol y activo
+  √  id, correo y creado_en no cambian
+  GET http://localhost:8001/api/v1/usuarios/077054f2-f3c4-46a1-8e50-a79657e95b7c [200 OK, 550B, 12ms]
+  √  Persistencia: un GET posterior devuelve lo reemplazado
+
+└ 1.5 PATCH /usuarios/{usuarioId} - actualización parcial con merge-patch (200)
+  PATCH http://localhost:8001/api/v1/usuarios/077054f2-f3c4-46a1-8e50-a79657e95b7c [200 OK, 546B, 16ms]
+  √  200 OK: solo cambia el nombre
+  GET http://localhost:8001/api/v1/usuarios/077054f2-f3c4-46a1-8e50-a79657e95b7c [200 OK, 546B, 12ms]
+  √  Persistencia: un GET posterior devuelve lo actualizado
+
+└ 1.6 GET /usuarios?activo=true - lista filtrada (200)
+  GET http://localhost:8001/api/v1/usuarios?activo=true [200 OK, 5.16kB, 13ms]
+  √  200 OK: arreglo de cuentas activas que incluye la creada
+
+└ 1.7 GET /alertas - lectura de A1 con JWT (200)
+  GET http://localhost:8001/api/v1/alertas [200 OK, 1.3kB, 17ms]
+  √  200 OK: PaginaAlertas con zona y área en cada alerta
+
+└ 1.8 GET /cargas-alertas - lectura de A1 con JWT (200)
+  GET http://localhost:8001/api/v1/cargas-alertas [200 OK, 1.16kB, 11ms]
+  √  200 OK: cargas con quién las cargó
+
+└ 1.9 GET /zonas/{codigo}/historial - lectura de A1 con JWT (200)
+  GET http://localhost:8001/api/v1/zonas/EA-2026-001/historial [200 OK, 1.45kB, 14ms]
+  √  200 OK: la primera entrada es la creación de la zona, hecha por el Sistema
+
+□ 2. Seguridad: 401, 403, contraseña temporal, revocación y logout
+└ 2.1 GET /usuarios sin token (401 NO_AUTENTICADO)
+  GET http://localhost:8001/api/v1/usuarios [401 Unauthorized, 596B, 4ms]
+  √  401 Unauthorized en formato problem+json
+  √  WWW-Authenticate: Bearer realm
+
+└ 2.2 GET /alertas con un token alterado en un carácter (401 invalid_token)
+  GET http://localhost:8001/api/v1/alertas [401 Unauthorized, 619B, 5ms]
+  √  401 y WWW-Authenticate con invalid_token
+
+└ 2.3 POST /auth/login con contraseña incorrecta (401 CREDENCIALES_INVALIDAS)
+  POST http://localhost:8001/api/v1/auth/login [401 Unauthorized, 550B, 62ms]
+  √  401 genérico que no revela qué falló
+
+└ 2.4 POST /auth/login del analista con su contraseña temporal (200)
+  POST http://localhost:8001/api/v1/auth/login [200 OK, 1.02kB, 77ms]
+  √  200 OK: una cuenta creada por POST /usuarios inicia sesión y debe cambiar su contraseña
+
+└ 2.5 GET /alertas con contraseña temporal (403 CAMBIO_PASSWORD_REQUERIDO)
+  GET http://localhost:8001/api/v1/alertas [403 Forbidden, 546B, 7ms]
+  √  403 hasta que se cambie la contraseña temporal (RF-02-AC-4)
+
+└ 2.6 PUT /auth/password - el analista define su contraseña (204)
+  PUT http://localhost:8001/api/v1/auth/password [204 No Content, 293B, 147ms]
+  √  204 sin cuerpo
+
+└ 2.7 GET /alertas con el analista (200)
+  GET http://localhost:8001/api/v1/alertas [200 OK, 1.3kB, 14ms]
+  √  200 OK: el Analista SIG lee los datos de A1
+
+└ 2.8 GET /usuarios con el analista (403 ROL_NO_PERMITIDO)
+  GET http://localhost:8001/api/v1/usuarios [403 Forbidden, 507B, 7ms]
+  √  403: gestionar cuentas es solo de Coordinación
+
+└ 2.9 POST /usuarios con el analista (403 ROL_NO_PERMITIDO)
+  POST http://localhost:8001/api/v1/usuarios [403 Forbidden, 507B, 10ms]
+  √  403: el analista no crea cuentas
+
+└ 2.10 PUT /usuarios/{usuarioId} - Coordinación desactiva al analista (200)
+  PUT http://localhost:8001/api/v1/usuarios/077054f2-f3c4-46a1-8e50-a79657e95b7c [200 OK, 552B, 11ms]
+  √  200 OK: activo=false
+  GET http://localhost:8001/api/v1/usuarios/077054f2-f3c4-46a1-8e50-a79657e95b7c [200 OK, 552B, 9ms]
+  √  Persistencia: la cuenta quedó desactivada y no se eliminó
+
+└ 2.11 GET /alertas con el token del analista desactivado (401: sesión revocada)
+  GET http://localhost:8001/api/v1/alertas [401 Unauthorized, 619B, 7ms]
+  √  401 al instante: el token deja de servir aunque su firma siga vigente
+
+└ 2.12 POST /auth/login del analista desactivado (401)
+  POST http://localhost:8001/api/v1/auth/login [401 Unauthorized, 550B, 64ms]
+  √  401 genérico: una cuenta desactivada no inicia sesión (RF-02-AC-5)
+
+└ 2.13 POST /auth/login - segunda sesión de Coordinación (200)
+  POST http://localhost:8001/api/v1/auth/login [200 OK, 1.01kB, 73ms]
+  √  200 OK y un token distinto del principal
+
+└ 2.14 POST /auth/logout - cerrar la segunda sesión (204)
+  POST http://localhost:8001/api/v1/auth/logout [204 No Content, 293B, 8ms]
+  √  204 sin cuerpo
+
+└ 2.15 GET /auth/me con el token cerrado (401) y con el principal (200)
+  GET http://localhost:8001/api/v1/auth/me [401 Unauthorized, 619B, 6ms]
+  √  401: el token de la sesión cerrada ya no sirve (RF-01-AC-6)
+  GET http://localhost:8001/api/v1/auth/me [200 OK, 598B, 6ms]
+  √  La sesión principal sigue vigente y devuelve la cuenta de Coordinación
+
+□ 3. Idempotencia por cuenta, validaciones y PUT/PATCH negativos
+└ 3.1 POST /usuarios - misma clave con otro cuerpo (422 IDEMPOTENCIA_CONFLICTO)
+  POST http://localhost:8001/api/v1/usuarios [422 Unprocessable Content, 567B, 9ms]
+  √  422: la clave ya se usó con otra solicitud
+
+└ 3.2 POST /usuarios sin Idempotency-Key (400 SOLICITUD_MAL_FORMADA)
+  POST http://localhost:8001/api/v1/usuarios [400 Bad Request, 595B, 8ms]
+  √  400
+
+└ 3.3 POST /usuarios con un correo ya registrado (409 CORREO_DUPLICADO)
+  POST http://localhost:8001/api/v1/usuarios [409 Conflict, 497B, 67ms]
+  √  409
+
+└ 3.4 POST /usuarios - Coordinación crea a una segunda Coordinación con su propia clave (201)
+  POST http://localhost:8001/api/v1/usuarios [201 Created, 606B, 71ms]
+  √  201 Created
+
+└ 3.5 POST /auth/login de la Coordinación B (200)
+  POST http://localhost:8001/api/v1/auth/login [200 OK, 1.01kB, 67ms]
+  √  200 OK
+
+└ 3.6 PUT /auth/password de la Coordinación B (204)
+  PUT http://localhost:8001/api/v1/auth/password [204 No Content, 293B, 128ms]
+  √  204
+
+└ 3.7 POST /usuarios - OTRA cuenta repite la clave y el cuerpo de 3.4 (422, sin reutilizar la respuesta ajena)
+  POST http://localhost:8001/api/v1/usuarios [422 Unprocessable Content, 567B, 9ms]
+  √  422 IDEMPOTENCIA_CONFLICTO: la clave pertenece a la cuenta que la usó
+  √  No devuelve la cuenta creada por la otra Coordinación ni su Location
+
+└ 3.8 POST /usuarios - la cuenta dueña de la clave sí recibe su respuesta original (201)
+  POST http://localhost:8001/api/v1/usuarios [201 Created, 606B, 10ms]
+  √  201 con la misma cuenta creada en 3.4
+
+└ 3.9 POST /auth/register - alias de POST /usuarios con Idempotency-Key (201)
+  POST http://localhost:8001/api/v1/auth/register [201 Created, 606B, 66ms]
+  √  201 Created con Location
+
+└ 3.10 PUT sin el campo obligatorio activo (422 VALIDACION)
+  PUT http://localhost:8001/api/v1/usuarios/077054f2-f3c4-46a1-8e50-a79657e95b7c [422 Unprocessable Content, 587B, 6ms]
+  √  422 indicando el campo faltante
+
+└ 3.11 PUT intentando cambiar el correo (422 VALIDACION)
+  PUT http://localhost:8001/api/v1/usuarios/077054f2-f3c4-46a1-8e50-a79657e95b7c [422 Unprocessable Content, 588B, 7ms]
+  √  422: el correo no es editable
+
+└ 3.12 PUT de un usuario inexistente (404 NO_ENCONTRADO)
+  PUT http://localhost:8001/api/v1/usuarios/00000000-0000-0000-0000-000000000000 [404 Not Found, 540B, 12ms]
+  √  404
+
+└ 3.13 PATCH con Content-Type application/json (415 TIPO_CONTENIDO_NO_SOPORTADO)
+  PATCH http://localhost:8001/api/v1/usuarios/077054f2-f3c4-46a1-8e50-a79657e95b7c [415 Unsupported Media Type, 556B, 7ms]
+  √  415
+
+└ 3.14 PATCH con cuerpo vacío (422 VALIDACION)
+  PATCH http://localhost:8001/api/v1/usuarios/077054f2-f3c4-46a1-8e50-a79657e95b7c [422 Unprocessable Content, 600B, 8ms]
+  √  422
+
+└ 3.15 DELETE /usuarios/{usuarioId} - no expuesto (405, RF-02-AC-7)
+  DELETE http://localhost:8001/api/v1/usuarios/077054f2-f3c4-46a1-8e50-a79657e95b7c [405 Method Not Allowed, 532B, 2ms]
+  √  405 y la cuenta sigue existiendo
+  GET http://localhost:8001/api/v1/usuarios/077054f2-f3c4-46a1-8e50-a79657e95b7c [200 OK, 552B, 9ms]
+  √  Persistencia: GET posterior responde 200
+
+└ 3.16 GET /usuarios/{id} con un identificador no UUID (400 SOLICITUD_MAL_FORMADA)
+  GET http://localhost:8001/api/v1/usuarios/no-es-un-uuid [400 Bad Request, 596B, 7ms]
+  √  400 con el detalle del parámetro
+
+┌─────────────────────────┬───────────────────┬──────────────────┐
+│                         │          executed │           failed │
+├─────────────────────────┼───────────────────┼──────────────────┤
+│              iterations │                 1 │                0 │
+├─────────────────────────┼───────────────────┼──────────────────┤
+│                requests │                48 │                0 │
+├─────────────────────────┼───────────────────┼──────────────────┤
+│            test-scripts │                43 │                0 │
+├─────────────────────────┼───────────────────┼──────────────────┤
+│      prerequest-scripts │                 3 │                0 │
+├─────────────────────────┼───────────────────┼──────────────────┤
+│              assertions │                58 │                0 │
+├─────────────────────────┴───────────────────┴──────────────────┤
+│ total run duration: 4.9s                                       │
+├────────────────────────────────────────────────────────────────┤
+│ total data received: 19.78kB (approx)                          │
+├────────────────────────────────────────────────────────────────┤
+│ average response time: 27ms [min: 2ms, max: 147ms, s.d.: 33ms] │
+└────────────────────────────────────────────────────────────────┘

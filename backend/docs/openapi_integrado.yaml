@@ -11,7 +11,7 @@ info:
     **Contrato integrado (S05-S06-A1 + S05-S06-A2).** Parte del contrato de A2 (`S05_S06_A2/openapi_equipo.yaml`,
     con el módulo de autenticación JWT) y le añade `PUT /usuarios/{usuarioId}` y el resto de las decisiones de
     A1 (`S05_S06_A1/openapi_equipo.yaml`). Ambos originales se conservan sin cambios como evidencia histórica; la
-    relación entre los tres está en `S05_S06_integracion/integracion.md`.
+    relación entre los tres está en `backend/docs/integracion.md`.
 
     **Fuente de los requerimientos:** `SRS_equipo.md`, línea base v1.0. Alcance: RF-01 a RF-17 (Must).
 

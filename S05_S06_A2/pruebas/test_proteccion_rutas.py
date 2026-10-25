@@ -8,7 +8,7 @@ import yaml
 from app.main import PREFIJO_API, app
 from conftest import MERGE_PATCH, bearer
 
-CONTRATO = Path(__file__).resolve().parents[2] / 'S05_S06_integracion' / 'openapi_integrado.yaml'
+CONTRATO = Path(__file__).resolve().parents[2] / 'backend' / 'docs' / 'openapi_integrado.yaml'
 RUTAS_PUBLICAS = {('POST', '/api/v1/auth/login')}
 VALORES_PARAMETROS = {'codigo': 'EA-2026-001'}
 UUID_EJEMPLO = '00000000-0000-4000-8000-000000000000'

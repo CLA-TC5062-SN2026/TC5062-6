@@ -1,9 +1,10 @@
-# EcoAlert Tambopata — Backend integrado (FastAPI + PostgreSQL/PostGIS)
+# EcoAlert Tambopata — Backend compartido (FastAPI + PostgreSQL/PostGIS)
 
 Backend único que une los servicios CRUD de **S05-S06-A1** (paginación, idempotencia, PUT/PATCH, validaciones y pruebas) con la
-autenticación y seguridad de **S05-S06-A2** (JWT, sesiones, roles y protección de rutas). El contrato es
-`S05_S06_integracion/openapi_integrado.yaml` (v1.3.0); la relación con los contratos originales de A1 y A2, que se conservan sin
-cambios, está en `S05_S06_integracion/integracion.md`. Las decisiones de seguridad están en `S05_S06_A2/revision_seguridad.md`.
+autenticación y seguridad de **S05-S06-A2** (JWT, sesiones, roles y protección de rutas). Los entregables de la rúbrica son
+`S05_S06_A1/` y `S05_S06_A2/`; esta carpeta es el código que comparten. El contrato que implementa es
+`docs/openapi_integrado.yaml` (v1.3.0); la relación con los contratos originales de A1 y A2, que se conservan sin cambios, está en
+`docs/integracion.md`. Las decisiones de seguridad están en `S05_S06_A2/revision_seguridad.md`.
 
 ## Alcance
 Implementa **20 de las 39 operaciones** del contrato integrado:
@@ -90,22 +91,7 @@ Si PowerShell bloquea la activación del entorno: `Set-ExecutionPolicy -Scope Pr
 - `GET /salud` (fuera de `/api/v1`) es público y solo informa si la base responde.
 
 ### Trazabilidad con el contrato integrado
-
-| Método | Ruta | Operación | Origen |
-|---|---|---|---|
-| POST | `/api/v1/auth/login` | iniciarSesion | A2 |
-| POST | `/api/v1/auth/register` | registrarUsuario | A2 (+ `Idempotency-Key` de A1) |
-| GET | `/api/v1/auth/me` | obtenerSesionActual | A2 |
-| POST | `/api/v1/auth/logout` | cerrarSesion | A2 |
-| PUT | `/api/v1/auth/password` | cambiarPassword | A2 |
-| GET, POST | `/api/v1/usuarios` | listarUsuarios, crearUsuario | A1 |
-| GET, PUT, PATCH | `/api/v1/usuarios/{usuarioId}` | obtenerUsuario, reemplazarUsuario, actualizarUsuario | A1 |
-| GET | `/api/v1/alertas` | listarAlertas (paginado; filtros `zona` y `presente_en_ultima_carga`) | A1 |
-| GET | `/api/v1/cargas-alertas[/{cargaId}]` | listarCargasAlertas, obtenerCargaAlertas | A1 |
-| GET | `/api/v1/zonas/{codigo}/marcas[/{marcaId}]` | listarMarcasZona, obtenerMarca | A1 |
-| GET | `/api/v1/zonas/{codigo}/ajustes[/{ajusteId}]` | listarAjustesZona, obtenerAjuste | A1 |
-| GET | `/api/v1/zonas/{codigo}/historial[/{entradaId}]` | obtenerHistorialZona, obtenerEntradaHistorial | A1 |
-| GET | `/api/v1/trabajos/{trabajoId}` | obtenerTrabajo | A1 |
+La tabla de las 39 operaciones (implementadas y pendientes, con su origen y roles) está en `docs/integracion.md`, sección 7.
 
 ## Estructura
 
@@ -121,6 +107,7 @@ app/
   routers/          auth (A2), usuarios y consultas (A1)
   cli.py            Creación de la primera cuenta de Coordinación (A2)
 tests/              Suite de A1 (base ecoalert_test sembrada) e integración A1 + A2
+docs/               Contrato integrado, documentación técnica de la integración y antecedentes de A1
 docker-compose.yml  Base local con el esquema importado
 docker/initdb/      Creación de las bases de pruebas
 ```
@@ -160,12 +147,12 @@ Variables opcionales: `TEST_DB_NAME` / `TEST_DATABASE_URL` (base de A1) y `TEST_
 ### Verificación local (25/10/2026)
 Entorno: Windows, Python 3.13.7, Docker Engine 29.8.0, `postgis/postgis:17-3.5` (PostgreSQL 17.5, PostGIS 3.5.2).
 - **`python -m pytest`:** 226 de 226 aprobadas (102 de A1 e integración y 124 de A2), también por separado y en orden inverso.
-- **Newman** (colección integrada, base `ecoalert_postman_test`): 43 requests (48 solicitudes HTTP), 58 aserciones, 0 fallos, en 3 corridas seguidas sin limpiar la base.
+- **Newman** (colección de `S05_S06_A2/postman`, base `ecoalert_postman_test`): 43 requests (48 solicitudes HTTP), 58 aserciones, 0 fallos, en 3 corridas seguidas sin limpiar la base; salida en `S05_S06_A2/evidencias/newman_backend_final.txt`.
 - **Prueba de humo contra uvicorn y PostgreSQL reales:** creación de la Coordinación con la CLI, login, 401 sin token y con token alterado, reintento idempotente, `PUT`/`PATCH`/`DELETE`, `register`, contraseña temporal, cambio de contraseña, revocación al desactivar y logout; todos los códigos coinciden con el contrato.
-- **Sin verificar:** operaciones no implementadas (19 de 39; lista en `S05_S06_integracion/integracion.md`), rendimiento (RNF-04) y las colecciones Postman originales de A1 y A2 contra el backend integrado (usan el contrato anterior).
+- **Sin verificar:** operaciones no implementadas (19 de 39; lista en `docs/integracion.md`) y rendimiento (RNF-04). Las colecciones Postman originales de A1 y A2 no funcionan contra este backend (usan el contrato anterior; resultados en `docs/integracion.md`, sección 5).
 
-### Colección Postman de la API integrada
-`S05_S06_integracion/postman/` contiene `EcoAlert_integrada.postman_collection.json` y su entorno. Hace login JWT (el token se guarda y se envía como Bearer), usa `Idempotency-Key` y cubre POST, GET, PUT y PATCH de usuarios, las lecturas de A1 con JWT, 401, 403, contraseña temporal, revocación de sesiones, logout e idempotencia entre cuentas. No sustituye a las colecciones originales de A1 y A2, que no se tocaron.
+### Colección Postman del backend final
+`S05_S06_A2/postman/` contiene, junto a la colección original de A2, `EcoAlert_Auth_S05_S06_A2_backend_final.postman_collection.json` y su entorno. Hace login JWT (el token se guarda y se envía como Bearer), usa `Idempotency-Key` y cubre POST, GET, PUT y PATCH de usuarios, las lecturas de A1 con JWT, 401, 403, contraseña temporal, revocación de sesiones, logout e idempotencia entre cuentas. Las colecciones originales de A1 y A2 no se tocaron.
 
 Requiere una base `*_test` con la semilla de A1 y una cuenta de Coordinación. **El orden importa**: la CLI se niega si ya existe cualquier cuenta de coordinación y la semilla trae una, así que la CLI va antes de la semilla. Desde `backend`, con el entorno virtual activo y el usuario y la clave de `DATABASE_URL` de `.env`:
 
@@ -183,7 +170,7 @@ python -m uvicorn app.main:app --port 8001 --env-file .env
 Luego, en Postman, importar la colección y el entorno, escribir la contraseña de la cuenta en el valor actual de `coordPassword` y ejecutar la colección; o bien desde la raíz del repositorio:
 
 ```powershell
-npx --yes newman run S05_S06_integracion/postman/EcoAlert_integrada.postman_collection.json -e S05_S06_integracion/postman/EcoAlert_integrada.postman_environment.json --env-var coordPassword=<contraseña>
+npx --yes newman run S05_S06_A2/postman/EcoAlert_Auth_S05_S06_A2_backend_final.postman_collection.json -e S05_S06_A2/postman/EcoAlert_Auth_S05_S06_A2_backend_final.postman_environment.json --env-var coordPassword=<contraseña>
 ```
 
 El request 0.3 falla si la API no apunta a una base sembrada (espera 4 alertas publicables). Los correos y las claves se generan en cada corrida, así que se puede repetir sin limpiar la base.

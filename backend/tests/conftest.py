@@ -31,7 +31,7 @@ entorno_de_pruebas()
 
 from app.security import hashear  # noqa: E402
 
-OPENAPI = REPO / 'S05_S06_integracion' / 'openapi_integrado.yaml'
+OPENAPI = BACKEND / 'docs' / 'openapi_integrado.yaml'
 OPENAPI_A1 = REPO / 'S05_S06_A1' / 'openapi_equipo.yaml'
 OPENAPI_A2 = REPO / 'S05_S06_A2' / 'openapi_equipo.yaml'
 CLASES = REPO / 'S05_S06_A2' / 'diagrama_clases_equipo.puml'
