@@ -1,0 +1,27 @@
+# Base de datos local de desarrollo: PostgreSQL 17 + PostGIS 3.5 con esquema_bd.sql importado.
+# Las credenciales vienen de .env (ver .env.example); este archivo no contiene secretos.
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    # La imagen oficial solo existe para amd64; en Apple Silicon Docker la emula con Rosetta.
+    platform: linux/amd64
+    container_name: ecoalert_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Define POSTGRES_DB en .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Define POSTGRES_USER en .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+    ports:
+      # Solo en loopback: la base de datos no queda expuesta a la red local.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ecoalert_pgdata:/var/lib/postgresql/data
+      - ../S05_S06_A1/esquema_bd.sql:/docker-entrypoint-initdb.d/01_esquema.sql:ro
+      - ./docker/initdb/02_base_pruebas.sh:/docker-entrypoint-initdb.d/02_base_pruebas.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  ecoalert_pgdata:

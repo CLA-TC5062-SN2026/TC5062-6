@@ -1,56 +1,98 @@
-# EcoAlert Tambopata — CRUD inicial (FastAPI + PostgreSQL/PostGIS)
+# EcoAlert Tambopata — Backend (FastAPI + PostgreSQL/PostGIS)
 
-## Alcance real
-Implementa **14 operaciones de lectura y escritura iniciales** con las mismas rutas y códigos de éxito definidos en `openapi_equipo.yaml`: creación, listado, consulta y actualización de usuarios; consulta de alertas, cargas, marcas, ajustes, historial y trabajos. Las entidades geoespaciales, historiales y comparaciones **no tienen DELETE** en el contrato del equipo; no se inventan endpoints destructivos.
+API REST con autenticación JWT y control de acceso por rol, construida a partir del contrato
+`S05_S06_A2/openapi_equipo.yaml` (v1.2.0). Las decisiones de seguridad y su justificación están en
+`S05_S06_A2/revision_seguridad.md`.
 
-**Importante:** esta entrega es una **base de servicios CRUD, no una implementación completa de las 37 operaciones OpenAPI**. Las operaciones de autenticación, ingesta de archivos, procesamiento asíncrono, construcción de respuestas espaciales completas, cálculo de prioridad, cambios de estado, creación/retiro de ajustes y marcas, comparación y exportación quedan pendientes. No deben simularse como implementadas. Tampoco se habilitan operaciones que requieran `creado_por` o `autor_id` sin autenticación real. Los endpoints existentes **aún no tienen control de acceso** y no deben exponerse fuera de un entorno local de desarrollo.
+## Alcance
 
-### Inicio local (PowerShell)
+- **Autenticación (S05-S06-A2):** registro (solo Coordinación), login con JWT, sesión actual, logout y cambio de contraseña.
+- **CRUD inicial (S05-S06):** gestión de cuentas y consultas de alertas, cargas, marcas, ajustes, historial y trabajos.
+- **Pendiente según el contrato:** ingesta de archivos, procesamiento asíncrono, zonas y mapa, prioridad,
+  cambios de estado, creación y retiro de ajustes y marcas, comparación de periodos, exportación e `Idempotency-Key`.
+  No se simulan como implementadas.
 
-1. Tener `ecoalert_db` levantado con Docker y `esquema_bd.sql` ya importado.
-2. Crear un entorno virtual Python 3.12 (también compatible con versiones recientes soportadas por dependencias):
+Las cuentas, zonas y análisis **no tienen DELETE** por diseño (RF-02-AC-7, RF-12-AC-17, RF-15-AC-3): responden 405.
 
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-Copy-Item .env.example .env
-uvicorn app.main:app --reload --env-file .env
+## Puesta en marcha
+
+Requisitos: Docker y Python 3.12 (`uv` recomendado).
+
+```bash
+cd backend
+cp .env.example .env
+# Genera un secreto y pégalo en JWT_SECRET (la API no arranca con el valor de plantilla):
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+
+# 1. Base de datos: PostgreSQL 17 + PostGIS con S05_S06_A1/esquema_bd.sql importado
+#    (crea también la base ecoalert_test para las pruebas).
+docker compose --env-file .env up -d
+
+# 2. Entorno Python
+uv venv --python 3.12 .venv
+uv pip install --python .venv/bin/python -r requirements-dev.txt
+
+# 3. Primera cuenta de Coordinación (pide la contraseña sin eco; mínimo 12 caracteres)
+.venv/bin/python -m app.cli crear-coordinacion --nombre "Coordinación Demo" --correo coordinacion@ecoalert.pe
+
+# 4. API en http://127.0.0.1:8000 (documentación en /docs si API_DOCS=true)
+.venv/bin/uvicorn app.main:app --reload
 ```
 
-3. Abrir http://127.0.0.1:8000/docs y probar `GET /salud`.
+En Windows (PowerShell), activa el entorno con `.\.venv\Scripts\Activate.ps1` y usa `Copy-Item` en lugar de `cp`.
+La imagen `postgis/postgis` solo existe para amd64; en Apple Silicon Docker la emula (ya está declarado en `docker-compose.yml`).
 
-El archivo `.env.example` contiene valores **solo de desarrollo local**. No subir `.env` al repositorio.
+## Variables de entorno
 
-### Trazabilidad
+| Variable | Obligatoria | Descripción |
+|---|---|---|
+| `DATABASE_URL` | Sí | Conexión a PostgreSQL. |
+| `JWT_SECRET` | Sí | Secreto HS256, mínimo 32 bytes aleatorios. |
+| `JWT_EXPIRATION` | Sí | Vida máxima del token en segundos (1 a 86400). |
+| `JWT_ISSUER`, `JWT_AUDIENCE` | No | Claims `iss` y `aud` (por defecto `ecoalert-api`, `ecoalert-spa`). |
+| `SESION_INACTIVIDAD_SEGUNDOS` | No | Expiración por inactividad; por defecto 1800 (PS-12). |
+| `API_DOCS` | No | Expone `/docs` y `/openapi.json`; por defecto `false`. |
+| `POSTGRES_*` | Para Docker | Credenciales del contenedor de base de datos (solo desarrollo). |
 
-| Método | Ruta | Operación | Estado |
-|---|---|---|---|
-| GET | `/usuarios` | listarUsuarios | Implementado |
-| POST | `/usuarios` | crearUsuario | Implementado |
-| GET | `/usuarios/{usuarioId}` | obtenerUsuario | Implementado |
-| PATCH | `/usuarios/{usuarioId}` | actualizarUsuario | Implementado |
-| GET | `/alertas` | listarAlertas | Implementado (sin filtros) |
-| GET | `/cargas-alertas` | listarCargasAlertas | Implementado |
-| GET | `/cargas-alertas/{cargaId}` | obtenerCargaAlertas | Implementado |
-| GET | `/zonas/{codigo}/marcas` | listarMarcasZona | Implementado |
-| GET | `/zonas/{codigo}/marcas/{marcaId}` | obtenerMarca | Implementado |
-| GET | `/zonas/{codigo}/ajustes` | listarAjustesZona | Implementado |
-| GET | `/zonas/{codigo}/ajustes/{ajusteId}` | obtenerAjuste | Implementado |
-| GET | `/zonas/{codigo}/historial` | obtenerHistorialZona | Implementado |
-| GET | `/zonas/{codigo}/historial/{entradaId}` | obtenerEntradaHistorial | Implementado |
-| GET | `/trabajos/{trabajoId}` | obtenerTrabajo | Implementado |
-| Resto | Según OpenAPI | Seguridad, zonas, capas, ingesta, prioridad, análisis, exportación | Pendiente |
+## Autenticación y roles
 
-**Advertencia sobre fidelidad:** la cobertura es parcial: por ejemplo `GET /alertas` no aplica aún todos los filtros del OpenAPI. Se deben verificar los cuerpos de respuesta con el esquema OpenAPI en pruebas de contrato antes de dar el backend por terminado.
+Todas las rutas de `/api/v1` exigen `Authorization: Bearer <token>`, excepto `POST /auth/login`.
 
-### Diseño
-- SQL parametrizado con `psycopg` y pool de conexiones.
-- `201` al crear usuario, `200` en lecturas y actualizaciones, `404` al faltar recursos, `409` ante correo duplicado, `400` en integridad, `422` en validación.
-- La contraseña se guarda como hash Argon2; nunca se devuelve.
-- No existe DELETE físico de usuarios o zonas: el SRS define desactivación, retiro o historial.
+| Método | Ruta (`/api/v1`) | Acceso |
+|---|---|---|
+| POST | `/auth/login` | Público |
+| POST | `/auth/register` | Coordinación |
+| GET | `/auth/me` · POST `/auth/logout` · PUT `/auth/password` | Cualquier usuario autenticado |
+| GET, POST | `/usuarios` · GET, PATCH `/usuarios/{usuarioId}` | Coordinación |
+| GET | `/alertas`, `/cargas-alertas[/{id}]`, `/trabajos/{id}`, `/zonas/{codigo}/{marcas,ajustes,historial}[/{id}]` | Analista SIG y Coordinación |
 
-### Limitaciones importantes
-- Para que `POST /usuarios` cumpla con el SRS, debe exigirse rol Coordinación una vez implementado el login; por ahora es **solo demostración local**.
-- El modelo SQL y las vistas OpenAPI no son equivalentes 1:1. Los DTO se construyen en la API.
-- No se han ejecutado pruebas de integración en la base de datos del usuario.
+- **401** sin token, con token inválido o expirado, o con la sesión cerrada o inactiva.
+- **403** `ROL_NO_PERMITIDO` si el rol no tiene acceso; **403** `CAMBIO_PASSWORD_REQUERIDO` mientras la contraseña sea temporal.
+- `GET /salud` (fuera de `/api/v1`) es público y solo informa si la base de datos responde.
+
+## Pruebas
+
+```bash
+.venv/bin/python -m pytest                        # 101 pruebas contra la base ecoalert_test
+COORD_PASSWORD='…' ./scripts/pruebas_manuales.sh  # pruebas manuales con curl (API en marcha)
+```
+
+La colección de Postman del video está en `S05_S06_A2/postman/`.
+
+## Estructura
+
+```
+app/
+  main.py           Ensamblado: routers, denegación por defecto, cabeceras de seguridad
+  config.py         Variables de entorno validadas al arrancar
+  security.py       Hash de contraseñas (bcrypt; verifica Argon2 heredado) y JWT
+  dependencies.py   Middleware de autenticación (autenticar) y de rol (RequiereRol)
+  errors.py         Errores RFC 9457 (application/problem+json)
+  db.py             Pool de conexiones y consultas parametrizadas
+  schemas.py        Modelos de solicitud alineados con el contrato
+  routers/          auth, usuarios, consultas
+  cli.py            Creación de la primera cuenta de Coordinación
+tests/              Pruebas de integración, unitarias y de configuración
+scripts/            Pruebas manuales con curl
+docker/initdb/      Creación de la base de pruebas
+```

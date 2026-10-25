@@ -3,3 +3,9 @@
 
 # macOS
 .DS_Store
+
+# Python / secretos locales
+.env
+.venv/
+__pycache__/
+.pytest_cache/
