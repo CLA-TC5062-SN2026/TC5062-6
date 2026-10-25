@@ -2,7 +2,7 @@ openapi: 3.0.3
 
 info:
   title: EcoAlert Tambopata — API REST consolidada del equipo
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Contrato de la API REST del backend de **EcoAlert Tambopata** (enfoque *spec-first*).
     Este documento precede al código (S05-S06-A1) y a las pruebas (S09-A1): el código se

@@ -3,7 +3,7 @@
 **Artefacto revisado:** `esquema_bd.sql`  
 **Referencias:** `diagrama_clases_equipo.puml`, `openapi_equipo.yaml` y SRS del equipo.  
 **Motor:** PostgreSQL 17 + PostGIS.  
-**Resultado:** se corrigió el SQL original **antes de ejecutarlo**. No se realizó ejecución en PostgreSQL/PostGIS; la validación aquí es estática.
+**Resultado:** se corrigió el SQL original **antes de ejecutarlo** y después se importó en PostgreSQL 17.5 + PostGIS 3.5.2 **sin errores** (sección 7). Las correcciones al código de servicios están en la sección 8.
 
 ## 1. Criterio de correspondencia con el diagrama
 
@@ -75,4 +75,85 @@ Las representaciones compuestas del API se reconstruyen mediante consultas y ló
 
 ## 6. Resultado y decisión
 
-**Estado: revisado y corregido estáticamente; pendiente de prueba de ejecución.** El esquema representa las entidades persistentes principales y las asociaciones del dominio sin transformar indiscriminadamente todos los DTO del diagrama en tablas. Se corrigieron incompatibilidades concretas con enumeraciones, patrones y reglas de negocio del OpenAPI. Antes de utilizarlo como esquema definitivo de producción, deben realizarse la ejecución real en PostgreSQL/PostGIS y las pruebas de integridad indicadas; especialmente, reforzar la inmutabilidad y las restricciones cruzadas.
+**Estado: revisado, corregido e importado sin errores (sección 7).** El esquema representa las entidades persistentes principales y las asociaciones del dominio sin transformar indiscriminadamente todos los DTO del diagrama en tablas. Se corrigieron incompatibilidades concretas con enumeraciones, patrones y reglas de negocio del OpenAPI. Antes de utilizarlo como esquema definitivo de producción deben realizarse las pruebas de integridad indicadas en la sección 5; especialmente, reforzar la inmutabilidad y las restricciones cruzadas.
+
+## 7. Importación del esquema y verificación de tablas
+
+**Entorno:** imagen `postgis/postgis:17-3.5` (PostgreSQL 17.5, PostGIS 3.5.2) levantada con `backend/docker-compose.yml`, que monta `esquema_bd.sql` en `/docker-entrypoint-initdb.d/`. Fecha: 24/10/2026.
+
+**Resultado:** el script se ejecutó completo **sin errores** (el log del contenedor no registra ningún `ERROR`). `\dt` muestra las **21 tablas** del esquema; `spatial_ref_sys` es la tabla de sistemas de referencia que crea PostGIS.
+
+```
+ecoalert=# \dt public.*
+ public | ajustes_prioridad       | table | ecoalert
+ public | alertas                 | table | ecoalert
+ public | analisis                | table | ecoalert
+ public | archivos_temporales     | table | ecoalert
+ public | capas_referencia        | table | ecoalert
+ public | carga_alerta_detalle    | table | ecoalert
+ public | cargas_alertas          | table | ecoalert
+ public | contextos_territoriales | table | ecoalert
+ public | elementos_capa          | table | ecoalert
+ public | entradas_historial      | table | ecoalert
+ public | factores_prioridad      | table | ecoalert
+ public | fuentes_usadas          | table | ecoalert
+ public | marcas                  | table | ecoalert
+ public | prioridades             | table | ecoalert
+ public | resultados_zona         | table | ecoalert
+ public | sesiones                | table | ecoalert
+ public | superposiciones         | table | ecoalert
+ public | trabajos                | table | ecoalert
+ public | usuarios                | table | ecoalert
+ public | versiones_capa          | table | ecoalert
+ public | zonas_cambio            | table | ecoalert
+```
+
+Restricciones creadas (`pg_constraint`, esquema `public`): **21 PRIMARY KEY, 32 FOREIGN KEY, 4 UNIQUE y 57 CHECK**, más **56 índices** (`pg_indexes`), entre ellos el índice único `uq_usuarios_correo_ci` sobre `lower(correo)` y los índices GIST de las geometrías.
+
+Para reproducirlo: `cd backend && cp .env.example .env && docker compose --env-file .env up -d`, y luego `docker exec ecoalert_db psql -U ecoalert -d ecoalert -c '\dt'`.
+
+## 8. Correcciones al código generado
+
+**Código revisado:** `backend/app/main.py` generado por el agente en S05-S06-A1 (commit `9f5070d`), contrastado contra `openapi_equipo.yaml` (rutas, métodos, códigos y schemas).
+
+**Ejecución:** el servidor se levantó con `uvicorn` contra la base de la sección 7 y la conexión funcionó (`GET /salud` → `{"estado":"ok","base_datos":true}`). Resultados de las operaciones probadas:
+
+| Operación | Esperado (contrato) | Obtenido | ¿Coincide? |
+|---|---|---|---|
+| `POST /usuarios` | 201 + `Usuario` | 201, sin contraseña ni hash en la respuesta | ✅ |
+| `GET /usuarios/{usuarioId}` | 200 + `Usuario` | 200 | ✅ |
+| `PATCH /usuarios/{usuarioId}` | 200 + `Usuario` | 200, cambia solo el campo enviado | ✅ |
+| `POST /usuarios` con correo repetido | 409 | 409 | ✅ |
+| `GET /usuarios/{id}` inexistente | 404 | 404 | ✅ |
+| `GET /alertas` | 200 + `PaginaAlertas` | 200, pero con un arreglo | ❌ (ver C-12) |
+| `DELETE /usuarios/{usuarioId}` | 405, la cuenta sigue existiendo (RF-02-AC-7) | 405 | ✅ (formato de error, ver C-03) |
+
+No hubo errores 500 durante la ejecución.
+
+### 8.1 Divergencias corregidas
+
+Corregidas en el backend durante S05-S06-A2 (commit `32bc06b`), con pruebas automatizadas en `backend/tests/`:
+
+| ID | Divergencia con el contrato | Código generado | Corrección |
+|---|---|---|---|
+| C-01 | `servers` declara el prefijo `/api/v1` | Rutas en la raíz (`/usuarios`) | Todas las rutas bajo `/api/v1` |
+| C-02 | `UsuarioCrear.password_temporal` con `minLength: 12` (PS-15, RF-02-AC-3) | Aceptaba 8 caracteres | Mínimo 12 y máximo 72 bytes (límite de bcrypt) |
+| C-03 | Errores `application/problem+json` con códigos estables (`NO_ENCONTRADO`, `VALIDACION`, `CORREO_DUPLICADO`) | `application/json` con `HTTP_404`, `DATOS_INVALIDOS`, `Recurso duplicado`; los 404 y 405 del framework salían como `{"detail": ...}` | Manejadores RFC 9457 para todos los errores, con los códigos del contrato |
+| C-04 | Respuestas 201 con cabecera `Location` | No se enviaba | `Location: /api/v1/usuarios/{id}` |
+| C-05 | `format: date-time` (RFC 3339) | `str(datetime)` producía `2026-10-25 05:29:40+00:00` | `isoformat()`: `2026-10-25T05:29:40+00:00` |
+| C-06 | `PATCH` con cuerpo vacío → 422 | 400 | 422 `VALIDACION` |
+| C-07 | `nombre_completo` con `maxLength: 120` | Sin límite | `max_length=120` |
+| C-08 | `PATCH` responde 409 si deja sin cuentas activas de Coordinación (RF-02-AC-8) y cierra sesiones al desactivar | No se validaba | Transacción con `FOR UPDATE` y revocación de sesiones |
+| C-09 | Conexión por variables de entorno documentadas en `.env.example` | El archivo no existía y `DATABASE_URL` tenía credenciales por defecto en el código | `.env.example` creado; `DATABASE_URL` obligatoria y sin valor por defecto |
+| C-10 | 401/403 en las rutas protegidas | Sin autenticación (fuera del alcance de S05-S06-A1 por instrucción) | Implementado en S05-S06-A2 (ver `S05_S06_A2/revision_seguridad.md`) |
+
+### 8.2 Divergencias pendientes
+
+Siguen abiertas en el código actual y deben resolverse antes de dar por cumplido el contrato:
+
+| ID | Divergencia | Situación actual |
+|---|---|---|
+| C-11 | `POST /usuarios` exige `Idempotency-Key` | La cabecera no se valida ni se almacena |
+| C-12 | `GET /alertas` devuelve `PaginaAlertas` (`alertas`, `total`, `limite`, `desplazamiento`) y acepta los filtros `zona` y `presente_en_ultima_carga` | Devuelve un arreglo sin paginación ni filtros |
+| C-13 | `cargada_por` (`CargaAlertas`), `creado_por`/`retirado_por` (`AjustePrioridad`) y `creada_por`/`retirada_por` (`Marca`) son objetos `UsuarioRef` | Se devuelven como UUID; marcas y ajustes usan `SELECT *` y exponen además la columna interna `zona_codigo` |
+| C-14 | `PATCH /usuarios/{usuarioId}` exige `Content-Type: application/merge-patch+json` (415 si no) | Acepta también `application/json` |

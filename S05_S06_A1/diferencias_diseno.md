@@ -3,20 +3,20 @@
 **Versión:** 1.0 · **Fecha:** 24/10/2026  
 **Proyecto:** Equipo 6 — Análisis, diseño y construcción de software  
 **Alcance:** contrato OpenAPI, diagrama de clases y diagrama de componentes.  
-**Fuente de verdad:** `SRS\_equipo.md` v1.0, especialmente RF-01 a RF-17 (*Must*).
+**Fuente de verdad:** `SRS_equipo.md` v1.0, especialmente RF-01 a RF-17 (*Must*).
 
-## 1\. Integrantes y artefactos comparados
+## 1. Integrantes y artefactos comparados
 
 |Sigla|Integrante|Contrato API|Diagrama de clases|Diagrama de componentes|
 |-|-|-|-|-|
-|MAA|**Miguel**|`MAA\_openapi.yaml`|`MAA\_diagrama\_clases.puml`|`MAA\_diagrama\_componentes.puml`|
-|AGGS|**Anthony**|`AGGS\_openapi.yaml`|`AGGS\_diagrama\_clases.puml`|`AGGS\_diagrama\_componentes.puml`|
-|DMV|**Daniel**|`DMV\_openapi.yaml`|`DMV\_diagrama\_clases.puml`|`DMV\_diagrama\_componentes.puml`|
-|EDSM|**Eduardo**|`EDSM\_openapi.yaml`|`EDSM\_diagrama\_clases.puml`|`EDSM\_diagrama\_componentes.puml`|
+|MAA|**Miguel**|`MAA_openapi.yaml`|`MAA_diagrama_clases.puml`|`MAA_diagrama_componentes.puml`|
+|AGGS|**Anthony**|`AGGS_openapi.yaml`|`AGGS_diagrama_clases.puml`|`AGGS_diagrama_componentes.puml`|
+|DMV|**Daniel**|`DMV_openapi.yaml`|`DMV_diagrama_clases.puml`|`DMV_diagrama_componentes.puml`|
+|EDSM|**Eduardo**|`EDSM_openapi.yaml`|`EDSM_diagrama_clases.puml`|`EDSM_diagrama_componentes.puml`|
 
-**Método:** se compararon los cuatro entregables individuales por artefacto, identificando elementos compartidos, diferencias y decisiones de consolidación. Las decisiones documentadas son las **adoptadas en los archivos consolidados de trabajo**; su aprobación formal por todos los integrantes no se presume. No se interpreta una mayor cantidad de endpoints o clases como mayor calidad por sí sola.
+**Método:** se compararon los cuatro entregables individuales por artefacto, identificando elementos compartidos, diferencias y decisiones de consolidación. Las decisiones documentadas son las **adoptadas en los archivos consolidados de trabajo**. No se interpreta una mayor cantidad de endpoints o clases como mayor calidad por sí sola.
 
-## 2\. Aportaciones de cada integrante
+## 2. Aportaciones de cada integrante
 
 |Integrante|API REST|Modelo de clases|Arquitectura de componentes|
 |-|-|-|-|
@@ -27,7 +27,7 @@
 
 **Consenso transversal:** SPA React 19/TypeScript, API Python 3.12/FastAPI, PostgreSQL 17/PostGIS, dos roles sin herencia, zonas construidas a partir de alertas, prioridad explicable, historial, comparación de periodos y exportación. El SRS exige además mantener las fuentes y sus fechas, no inferir causas ni legalidad, y no exponer titulares mineros.
 
-## 3\. Artefacto 1 — Contrato OpenAPI
+## 3. Artefacto 1 — Contrato OpenAPI
 
 ### 3.1 Consensos y diferencias
 
@@ -35,7 +35,7 @@ Las cuatro propuestas contemplan autenticación, usuarios, capas, carga y consul
 
 ### 3.2 Conflictos y resolución
 
-|ID|Conflicto entre propuestas|Resolución en `openapi\_equipo.yaml`|Motivo|
+|ID|Conflicto entre propuestas|Resolución en `openapi_equipo.yaml`|Motivo|
 |-|-|-|-|
 |API-01|Rutas en inglés (Anthony, Eduardo) y español (Miguel, Daniel)|**Rutas en español**, sustantivos plurales y `/api/v1`|Consistencia con la interfaz y el contrato consolidado.|
 |API-02|Diferentes métodos y códigos para cerrar sesión|`DELETE /auth/sesion` → **204**|Revocación de sesión sin cuerpo de respuesta.|
@@ -54,7 +54,7 @@ Las cuatro propuestas contemplan autenticación, usuarios, capas, carga y consul
 
 **Alcance:** RF-01 a RF-17 son obligatorios; las funcionalidades *Should* y *Could* no se incorporan solo por aparecer en un contrato individual. El comportamiento del API debe respetar **401** sin autenticación y **403** cuando el rol no está autorizado.
 
-## 4\. Artefacto 2 — Diagrama de clases
+## 4. Artefacto 2 — Diagrama de clases
 
 ### 4.1 Consenso
 
@@ -76,9 +76,9 @@ Los cuatro modelos incluyen, con nombres y grados de detalle distintos, los conc
 |CLS-10|Comparaciones con distinta distribución de periodo, fuente y resultado.|Periodos, análisis y resultados por zona como **instantáneas inmutables**.|RF-14 y RF-15 impiden alterar análisis anteriores.|
 |CLS-11|Eduardo incluye observaciones y responsables; otras propuestas incluyen extensiones de pesos o capas.|No elevar las mejoras *Should/Could* a dependencias del MVP.|Respeta MoSCoW del SRS.|
 
-**Resultado:** `diagrama\_clases\_equipo.puml`. Para asegurar una correspondencia verificable con el API, el diagrama consolidado representa los **62 schemas** de `components/schemas` del OpenAPI de equipo y sus **267 propiedades** (incluidas las heredadas mediante `allOf`), además de relaciones conceptuales. Esta decisión hace que el archivo sea un **modelo de estructuras de contrato/DTO con asociaciones de dominio**, no un modelo físico de tablas. `ZonaResumen` y `ZonaDetalle`, por ejemplo, son representaciones de la misma zona y no entidades independientes que deban persistirse por duplicado.
+**Resultado:** `diagrama_clases_equipo.puml`. Para asegurar una correspondencia verificable con el API, el diagrama consolidado representa los **62 schemas** de `components/schemas` del OpenAPI de equipo y sus **267 propiedades** (incluidas las heredadas mediante `allOf`), además de relaciones conceptuales. Esta decisión hace que el archivo sea un **modelo de estructuras de contrato/DTO con asociaciones de dominio**, no un modelo físico de tablas. `ZonaResumen` y `ZonaDetalle`, por ejemplo, son representaciones de la misma zona y no entidades independientes que deban persistirse por duplicado.
 
-## 5\. Artefacto 3 — Diagrama de componentes y arquitectura
+## 5. Artefacto 3 — Diagrama de componentes y arquitectura
 
 ### 5.1 Consenso
 
@@ -86,7 +86,7 @@ Las cuatro propuestas coinciden en una **arquitectura cliente-servidor de tres c
 
 ### 5.2 Conflictos y resolución
 
-|ID|Propuestas|Decisión en `arquitectura\_equipo.md` / `diagrama\_componentes\_equipo.puml`|Motivo|
+|ID|Propuestas|Decisión en `arquitectura_equipo.md` / `diagrama_componentes_equipo.puml`|Motivo|
 |-|-|-|-|
 |ARQ-01|Miguel propone **Caddy**; Daniel **Nginx**; Anthony y Eduardo no detallan proxy.|**Nginx**.|HTTPS y enrutamiento al backend sin nuevos componentes.|
 |ARQ-02|Anthony no explicita worker; Daniel usa worker con PostgreSQL; Eduardo añade Redis; Miguel usa tareas programadas.|**Worker Python y tabla de trabajos en PostgreSQL; sin Redis**.|Soporta ingestas asíncronas con menos infraestructura.|
@@ -98,9 +98,9 @@ Las cuatro propuestas coinciden en una **arquitectura cliente-servidor de tres c
 |ARQ-08|Sesión en cookie vs JWT y persistencia.|**Bearer JWT + sesión validada en servidor**.|Permite expiración por inactividad y revocación; roles sin herencia.|
 |ARQ-09|Miguel incluye CI/CD, Let's Encrypt y respaldo externo; Daniel incluye respaldo.|**Documentar aspectos operativos** sin tratarlos como módulos del dominio.|Mantiene legible el diagrama del MVP.|
 
-**Resultado:** `arquitectura\_equipo.md` documenta el acuerdo y contiene el diagrama PlantUML; `diagrama\_componentes\_equipo.puml` mantiene la versión editable. La arquitectura resultante incluye **SPA, Nginx, API FastAPI, worker Python, PostgreSQL/PostGIS y volumen temporal**, además de actores y fuentes externas. No se adoptaron microservicios ni Redis.
+**Resultado:** `arquitectura_equipo.md` documenta el acuerdo y contiene el diagrama PlantUML; `diagrama_componentes_equipo.puml` mantiene la versión editable. La arquitectura resultante incluye **SPA, Nginx, API FastAPI, worker Python, PostgreSQL/PostGIS y volumen temporal**, además de actores y fuentes externas. No se adoptaron microservicios ni Redis.
 
-## 6\. Trazabilidad y consistencia entre artefactos
+## 6. Trazabilidad y consistencia entre artefactos
 
 |Requerimientos del SRS|API consolidada|Modelo de clases|Componentes responsables|
 |-|-|-|-|
@@ -113,11 +113,11 @@ Las cuatro propuestas coinciden en una **arquitectura cliente-servidor de tres c
 
 **Reglas comunes que no deben perderse:** 401/403 según autenticación y rol; solo el Analista carga datos, ajusta prioridades, cambia estados, marca y exporta; Coordinación administra usuarios y consulta/compara; no se infiere causa o legalidad ni se expone titular minero; se preservan datos e historiales; las comparaciones son inmutables.
 
-## 7\. Acuerdos finales y límites de la verificación
+## 7. Acuerdos finales y límites de la verificación
 
-1. **Contrato API definitivo de trabajo:** `openapi\_equipo.yaml`, basado en DMV y armonizado con las demás propuestas, conservando `x-acceptance-criteria`.
-2. **Diagrama de clases definitivo de trabajo:** `diagrama\_clases\_equipo.puml`, alineado por nombre de schemas y propiedades con el OpenAPI consolidado; sus DTO no equivalen automáticamente a tablas.
-3. **Arquitectura definitiva de trabajo:** `arquitectura\_equipo.md` y `diagrama\_componentes\_equipo.puml`, con monolito modular, worker y PostgreSQL/PostGIS, sin Redis.
+1. **Contrato API definitivo de trabajo:** `openapi_equipo.yaml`, basado en DMV y armonizado con las demás propuestas, conservando `x-acceptance-criteria`.
+2. **Diagrama de clases definitivo de trabajo:** `diagrama_clases_equipo.puml`, alineado por nombre de schemas y propiedades con el OpenAPI consolidado; sus DTO no equivalen automáticamente a tablas.
+3. **Arquitectura definitiva de trabajo:** `arquitectura_equipo.md` y `diagrama_componentes_equipo.puml`, con monolito modular, worker y PostgreSQL/PostGIS, sin Redis.
 4. **Prioridad del equipo:** implementar RF-01 a RF-17 (*Must*) antes de las mejoras *Should/Could*.
 5. **Validación pendiente:** pruebas de ejecución de endpoints, revisión completa de reglas y multiplicidades del modelo y renderizado visual de los PlantUML. La consistencia estática de schemas no garantiza por sí sola comportamiento correcto del software.
 
