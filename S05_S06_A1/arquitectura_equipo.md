@@ -49,7 +49,7 @@ El archivo editable es **`diagrama_componentes_equipo.puml`**. Se reproduce a co
 title EcoAlert Tambopata — Arquitectura de contenedores consolidada (C4 nivel 2)
 left to right direction
 skinparam shadowing false
-skinparam linetype ortho
+skinparam linetype polyline
 skinparam componentStyle rectangle
 skinparam wrapWidth 210
 
@@ -116,7 +116,7 @@ Los módulos de **autenticación/usuarios, capas/ingesta, mapa/zonas, prioridad/
 
 ## 6. Coherencia con `openapi_equipo.yaml`
 
-La arquitectura contempla los **37 métodos HTTP** del contrato consolidado, agrupados así:
+La arquitectura contempla los **38 métodos HTTP** del contrato consolidado (v1.2.0), agrupados así:
 
 | Módulo lógico | Rutas del contrato |
 |---|---|
@@ -143,4 +143,4 @@ La arquitectura contempla los **37 métodos HTTP** del contrato consolidado, agr
 
 La solución se concentra en **RF-01 a RF-17 (Must)**. Las funcionalidades **Should/Could** se dejan como extensiones futuras; en particular, GEE/RADD/Sentinel-2 no se implementan por el solo hecho de aparecer en el diagrama.
 
-**Verificación efectuada:** cotejo de los cuatro diagramas `.puml` y lectura de las rutas del archivo `openapi_equipo.yaml`. **No equivale** a ejecutar pruebas de integración, comprobar que los componentes están desplegados ni validar visualmente el render de PlantUML. Las decisiones de worker, proxy y almacenamiento temporal son acuerdos propuestos para la consolidación, no requisitos textuales del SRS.
+**Verificación efectuada (25/10/2026):** `diagrama_componentes_equipo.puml`, el diagrama embebido en este documento y `diagrama_clases_equipo.puml` se renderizaron con PlantUML (imagen oficial `plantuml/plantuml` en Docker) sin errores de sintaxis y se revisaron visualmente. El contrato `openapi_equipo.yaml` v1.2.0 se validó (38 operaciones) y el backend FastAPI parcial (15 operaciones) se ejecutó contra PostgreSQL/PostGIS reales con la suite de `backend/tests`. **No equivale** a haber desplegado esta arquitectura: Docker Compose, Nginx, la SPA y el worker **no están construidos**; solo se usaron un contenedor PostgreSQL/PostGIS y uvicorn en entorno local. Las decisiones de worker, proxy y almacenamiento temporal son acuerdos propuestos para la consolidación, no requisitos textuales del SRS.

@@ -1,0 +1,55 @@
+@startuml
+!theme plain
+title EcoAlert Tambopata — Arquitectura de contenedores consolidada (C4 nivel 2)
+left to right direction
+skinparam shadowing false
+skinparam linetype polyline
+skinparam componentStyle rectangle
+skinparam wrapWidth 210
+
+actor "Analista SIG" as analista
+actor "Coordinación" as coord
+cloud "Fuentes oficiales\nGeoBosques · SERNANP · INGEMMET\n(descarga manual de archivos)" as fuentes
+cloud "Google Earth Engine\nSentinel-2 / RADD\nShould · fuera del MVP" as gee #FFF2DC
+
+rectangle "EcoAlert Tambopata — VPS / Docker Compose" as sistema {
+  component "SPA web\nReact 19 + TypeScript\nmapa, zonas, análisis" as spa #E9F3FF
+  component "Proxy inverso\nNginx · HTTPS/TLS" as proxy #E9F3FF
+  component "API REST /api/v1\nPython 3.12 + FastAPI\nmonolito modular" as api #E6F5E8
+  component "Procesador de trabajos\nPython (mismo backend)\ningesta y agrupación" as worker #E6F5E8
+  database "PostgreSQL 17 + PostGIS\nsesiones, capas, alertas, zonas,\nhistorial, análisis y trabajos\nEPSG:32719" as db #E6F5E8
+  folder "Archivos temporales\nvolumen Docker" as archivos #E6F5E8
+}
+
+analista --> spa : Interfaz web
+coord --> spa : Interfaz web
+analista ..> fuentes : Descarga manual
+spa --> proxy : HTTPS · JSON / multipart\nBearer JWT
+proxy --> api : HTTP interno /api/v1
+proxy --> spa : Sirve recursos estáticos
+api --> db : SQL/PostGIS
+api --> archivos : Guarda/lee archivos
+api --> db : Registra trabajos
+worker --> db : Consulta trabajos y guarda resultados
+worker --> archivos : Procesa cargas
+api ..> gee : Futuro, no incluido en MVP
+
+note bottom of api
+  Módulos lógicos internos (no microservicios):
+  Autenticación/usuarios · Capas/ingesta · Mapa/zonas
+  Prioridad/revisión · Comparaciones · Exportaciones
+  API: 401 sin sesión; 403 sin permiso.
+  Analista y Coordinación no heredan permisos.
+end note
+
+note bottom of worker
+  Procesamiento asíncrono sencillo mediante
+  tabla de trabajos en PostgreSQL.
+  Sin Redis ni broker adicional en el MVP.
+end note
+
+note bottom of fuentes
+  Los portales no llaman directamente a la API.
+  El Analista descarga y sube archivos.
+end note
+@enduml

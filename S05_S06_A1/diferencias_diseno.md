@@ -1,6 +1,6 @@
 # EcoAlert Tambopata — Diferencias y acuerdos de diseño
 
-**Versión:** 1.0 · **Fecha:** 24/10/2026  
+**Versión:** 1.1 · **Fecha:** 25/10/2026  
 **Proyecto:** Equipo 6 — Análisis, diseño y construcción de software  
 **Alcance:** contrato OpenAPI, diagrama de clases y diagrama de componentes.  
 **Fuente de verdad:** `SRS\_equipo.md` v1.0, especialmente RF-01 a RF-17 (*Must*).
@@ -15,6 +15,8 @@
 |EDSM|**Eduardo**|`EDSM\_openapi.yaml`|`EDSM\_diagrama\_clases.puml`|`EDSM\_diagrama\_componentes.puml`|
 
 **Método:** se compararon los cuatro entregables individuales por artefacto, identificando elementos compartidos, diferencias y decisiones de consolidación. Las decisiones documentadas son las **adoptadas en los archivos consolidados de trabajo**; su aprobación formal por todos los integrantes no se presume. No se interpreta una mayor cantidad de endpoints o clases como mayor calidad por sí sola.
+
+**Límite de verificación:** los cuatro entregables individuales (`MAA_*`, `AGGS_*`, `DMV_*`, `EDSM_*`) **no están en este repositorio**; solo se versionan los SRS individuales (`S03_A1/insumos/`) y los artefactos consolidados. Por eso las cifras de las secciones 2 y 3.1 (operaciones, clases y schemas de cada integrante) provienen de la comparación original y **no pudieron volver a contrastarse** con los archivos fuente. Las cifras de los artefactos consolidados sí se verifican con pruebas versionadas (`backend/tests`).
 
 ## 2\. Aportaciones de cada integrante
 
@@ -40,7 +42,7 @@ Las cuatro propuestas contemplan autenticación, usuarios, capas, carga y consul
 |API-01|Rutas en inglés (Anthony, Eduardo) y español (Miguel, Daniel)|**Rutas en español**, sustantivos plurales y `/api/v1`|Consistencia con la interfaz y el contrato consolidado.|
 |API-02|Diferentes métodos y códigos para cerrar sesión|`DELETE /auth/sesion` → **204**|Revocación de sesión sin cuerpo de respuesta.|
 |API-03|Cambio de contraseña con `PATCH`, `PUT` o `POST`|`PUT /auth/password` → **204**|Una operación uniforme y documentable.|
-|API-04|Actualización de usuario con `PUT` o `PATCH`|`PATCH /usuarios/{usuarioId}`|Modificación parcial; usuarios no se eliminan físicamente.|
+|API-04|Actualización de usuario con `PUT` o `PATCH`|`PATCH /usuarios/{usuarioId}` (se mantiene; para `PUT` ver API-13)|Modificación parcial; usuarios no se eliminan físicamente.|
 |API-05|Carga directa `multipart` vs recurso previo de archivo|`POST /archivos` y referencia al archivo cargado|Unifica la validación y reutilización de archivos en las ingestas.|
 |API-06|Carga de capas mediante recurso genérico o versión explícita|`POST /capas-referencia/{tipoCapa}/versiones`|Conserva versiones y fechas de corte conforme a RF-03.|
 |API-07|Ingesta síncrona `201` vs asíncrona `202`|`POST /cargas-alertas` → **202**; consulta de trabajo|Evita bloquear HTTP durante el procesamiento espacial.|
@@ -49,8 +51,9 @@ Las cuatro propuestas contemplan autenticación, usuarios, capas, carga y consul
 |API-10|Retiro de marcas con diferentes verbos y rutas|`PATCH` de la marca con justificación|Mantiene trazabilidad del retiro.|
 |API-11|Comparación como análisis o comparación; posible procesamiento diferido|`POST /analisis` → **201**|Crea un resultado inmutable según RF-14 y RF-15.|
 |API-12|Exportación en rutas separadas o una ruta con formato|`GET /exportaciones/zonas` con formato CSV/GeoJSON|Reutiliza filtros y mantiene ambos formatos *Must*.|
+|API-13|La actividad exige POST, GET y PUT o DELETE; el contrato 1.1.0 solo ofrecía `PATCH` para actualizar usuarios y prohibía DELETE (RF-02-AC-7)|Se agrega `PUT /usuarios/{usuarioId}` (contrato **1.2.0**, `reemplazarUsuario`): reemplazo completo de `nombre_completo`, `rol` y `activo`, sin cambiar el correo. `PATCH` se mantiene y no se agrega `DELETE`|Cumple la rúbrica sin borrar cuentas y reutiliza las mismas validaciones, regla de última coordinación (RF-02-AC-8) y transacción. **Es una propuesta adoptada para cumplir la actividad; no se afirma que todos los integrantes la hayan aprobado.** No cambia ningún criterio de aceptación.|
 
-**Base de consolidación:** se partió del contrato de **Daniel (DMV)** por su cobertura y trazabilidad del MVP, incorporando criterios de consistencia y simplificación identificados en las otras propuestas. El resultado contiene **37 operaciones** y mantiene **157 IDs únicos** en `x-acceptance-criteria`, además de `x-e2e-support`. La comprobación efectuada verificó existencia de IDs en el SRS y referencias `$ref`; no constituye una prueba de ejecución de la API.
+**Base de consolidación:** se partió del contrato de **Daniel (DMV)** por su cobertura y trazabilidad del MVP, incorporando criterios de consistencia y simplificación identificados en las otras propuestas. El resultado de la consolidación contenía **37 operaciones**; con API-13 (contrato 1.2.0) son **38**. Mantiene **157 IDs únicos** en `x-acceptance-criteria` y 9 en `x-e2e-support` (166 criterios *Must* en total). `backend/tests/test_contrato.py` comprueba que el contrato es válido OpenAPI 3.0, que sus 38 operaciones incluyen `PUT` y no `DELETE` de usuarios, que los 166 IDs coinciden con los del SRS, que sus 62 schemas coinciden con las 62 clases del UML (nombres y atributos) y que las rutas del backend están contenidas en el contrato. Es una verificación estática de consistencia; la ejecución del API se prueba aparte con la misma suite (15 operaciones implementadas).
 
 **Alcance:** RF-01 a RF-17 son obligatorios; las funcionalidades *Should* y *Could* no se incorporan solo por aparecer en un contrato individual. El comportamiento del API debe respetar **401** sin autenticación y **403** cuando el rol no está autorizado.
 
@@ -115,11 +118,11 @@ Las cuatro propuestas coinciden en una **arquitectura cliente-servidor de tres c
 
 ## 7\. Acuerdos finales y límites de la verificación
 
-1. **Contrato API definitivo de trabajo:** `openapi\_equipo.yaml`, basado en DMV y armonizado con las demás propuestas, conservando `x-acceptance-criteria`.
+1. **Contrato API definitivo de trabajo:** `openapi_equipo.yaml` v1.2.0, basado en DMV y armonizado con las demás propuestas, conservando `x-acceptance-criteria`.
 2. **Diagrama de clases definitivo de trabajo:** `diagrama\_clases\_equipo.puml`, alineado por nombre de schemas y propiedades con el OpenAPI consolidado; sus DTO no equivalen automáticamente a tablas.
 3. **Arquitectura definitiva de trabajo:** `arquitectura\_equipo.md` y `diagrama\_componentes\_equipo.puml`, con monolito modular, worker y PostgreSQL/PostGIS, sin Redis.
 4. **Prioridad del equipo:** implementar RF-01 a RF-17 (*Must*) antes de las mejoras *Should/Could*.
-5. **Validación pendiente:** pruebas de ejecución de endpoints, revisión completa de reglas y multiplicidades del modelo y renderizado visual de los PlantUML. La consistencia estática de schemas no garantiza por sí sola comportamiento correcto del software.
+5. **Validación realizada y pendiente (25/10/2026):** realizada — contrato válido y coherente con el SRS y el UML; los tres PlantUML renderizados sin errores; 15 de las 38 operaciones implementadas y probadas contra PostgreSQL/PostGIS reales (pytest y Newman). Pendiente — las 23 operaciones restantes, la revisión completa de reglas y multiplicidades del modelo, y las pruebas de seguridad y rendimiento. La consistencia estática de schemas no garantiza por sí sola el comportamiento del software no implementado.
 
 **Síntesis:** Miguel aportó detalle de dominio e infraestructura; Anthony, un modelo compacto del núcleo; Daniel, una base de API trazable y un worker sencillo; Eduardo, una perspectiva extensible y procesamiento asíncrono. Se conservaron las aportaciones compatibles con el SRS y se descartaron las complejidades que no son necesarias para el MVP.
 

@@ -2,7 +2,7 @@ openapi: 3.0.3
 
 info:
   title: EcoAlert Tambopata — API REST consolidada del equipo
-  version: 1.0.0
+  version: 1.2.0
   description: |
     Contrato de la API REST del backend de **EcoAlert Tambopata** (enfoque *spec-first*).
     Este documento precede al código (S05-S06-A1) y a las pruebas (S09-A1): el código se
@@ -76,9 +76,14 @@ info:
     ## Operaciones que no existen a propósito
     La API no expone borrado de cuentas (RF-02-AC-7), de zonas (RF-12-AC-17) ni modificación o
     borrado de análisis (RF-15-AC-3). Esos métodos responden 405 Method Not Allowed.
-    Las cuentas se modifican solo con `PATCH /usuarios/{usuarioId}` (JSON Merge Patch); no hay PUT.
+    Las cuentas se modifican con `PATCH /usuarios/{usuarioId}` (JSON Merge Patch, parcial) o con
+    `PUT /usuarios/{usuarioId}` (reemplazo completo de los campos editables); no hay DELETE.
 
     ## Historial de cambios del contrato
+    - **1.2.0** (S05-S06-A1): `PUT /usuarios/{usuarioId}` (`reemplazarUsuario`) para cumplir la
+      rúbrica de la actividad, que exige POST, GET y PUT o DELETE. Propuesta adoptada por el
+      equipo de trabajo; no cuenta con aprobación formal de todos los integrantes. PATCH se
+      mantiene. Sin DELETE de cuentas (RF-02-AC-7). No cambia ningún criterio de aceptación.
     - **1.1.0** (antes de implementar; sin clientes afectados): `Idempotency-Key` en los POST de
       creación; PUT y PATCH de usuarios unificados en un PATCH parcial (`actualizarUsuario`);
       `Location` en todas las respuestas 201 y nuevos GET individuales de ajuste, marca y entrada
@@ -489,12 +494,82 @@ paths:
           $ref: '#/components/responses/DemasiadasSolicitudes'
         '500':
           $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+    put:
+      tags: [Usuarios]
+      operationId: reemplazarUsuario
+      summary: Reemplazar los campos editables de la cuenta
+      description: |
+        Reemplazo completo de los campos editables: `nombre_completo`, `rol` y `activo` son
+        obligatorios; el correo no cambia. Aplica las mismas reglas que `actualizarUsuario`: las
+        cuentas no se eliminan (RF-02-AC-6), al desactivar se cierran las sesiones abiertas y
+        responde 409 si la operación deja al sistema sin ninguna cuenta activa de coordinación
+        (RF-02-AC-8). Repetir la misma solicitud produce el mismo estado, por lo que no exige
+        `Idempotency-Key`.
+
+        Extensión de la versión 1.2.0 adoptada en S05-S06-A1 para cumplir la rúbrica de la
+        actividad (POST, GET y PUT o DELETE). Es una propuesta del equipo de trabajo que no cuenta
+        con aprobación formal de todos los integrantes (ver `diferencias_diseno.md`, API-13).
+      x-roles: [coordinacion]
+      x-acceptance-criteria: [RF-02-AC-2, RF-02-AC-5, RF-02-AC-6, RF-02-AC-8, RF-02-AC-9]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/UsuarioActualizar'
+              - type: object
+                required: [nombre_completo, rol, activo]
+            example:
+              nombre_completo: Ana Quispe Mamani
+              rol: analista_sig
+              activo: true
+      responses:
+        '200':
+          description: Cuenta reemplazada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          description: Conflicto con el estado actual de las cuentas.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                ultimaCoordinacion:
+                  summary: RF-02-AC-8
+                  value:
+                    codigo: ULTIMA_COORDINACION
+                    mensaje: No se puede desactivar la última cuenta de coordinación
+                ultimaCoordinacionRol:
+                  summary: RF-02-AC-8 (cambio de rol)
+                  value:
+                    codigo: ULTIMA_COORDINACION
+                    mensaje: No se puede quitar el rol a la última cuenta de coordinación
+        '422':
+          $ref: '#/components/responses/ErrorValidacion'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
 
   # ================================================================
   # ARCHIVOS
   # ================================================================
-        '503':
-          $ref: '#/components/responses/ServicioNoDisponible'
   /archivos:
     post:
       tags: [Archivos]
@@ -3473,7 +3548,7 @@ x-consolidation-decisions:
   decision: PUT /auth/password; respuesta 204.
 - id: C-04
   tema: Actualización de usuarios
-  decision: PATCH /usuarios/{usuarioId} parcial; sin PUT ni DELETE de cuentas.
+  decision: PATCH /usuarios/{usuarioId} parcial; sin DELETE de cuentas. El PUT de reemplazo se añadió después (C-13).
 - id: C-05
   tema: Archivos
   decision: POST /archivos y referencia al archivo en las cargas; evita duplicar la subida.
@@ -3498,3 +3573,6 @@ x-consolidation-decisions:
 - id: C-12
   tema: Exportación
   decision: GET /exportaciones/zonas con formato CSV o GeoJSON documentado.
+- id: C-13
+  tema: Actualización completa de usuarios
+  decision: PUT /usuarios/{usuarioId} reemplaza nombre_completo, rol y activo (v1.2.0). Propuesta adoptada en S05-S06-A1 para cumplir la rúbrica; sin aprobación formal de todos los integrantes. PATCH se mantiene y no hay DELETE.

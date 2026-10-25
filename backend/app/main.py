@@ -2,225 +2,236 @@
 No reemplaza autenticación, ingesta geoespacial ni comparación de periodos.
 """
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from decimal import Decimal
-from typing import Literal
+from typing import Annotated
 from uuid import UUID
-import os
 
-import psycopg
-from psycopg.rows import dict_row
-from psycopg_pool import ConnectionPool
-from psycopg.errors import UniqueViolation, CheckViolation, ForeignKeyViolation
-from fastapi import FastAPI, Depends, HTTPException, Query, Response, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, Path, Query, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from psycopg.errors import UniqueViolation
 from pwdlib import PasswordHash
 
-DB_URL = os.getenv('DATABASE_URL', 'postgresql://ecoalert:ecoalert_dev@localhost:5432/ecoalert')
-pool = ConnectionPool(DB_URL, min_size=1, max_size=5, open=False, kwargs={'row_factory': dict_row})
+from . import db
+from .errors import ApiError, no_encontrado, registrar_errores
+from .schemas import (CODIGO_ZONA, AjustePrioridad, CargaAlertas, EntradaHistorial, Marca, PaginaAlertas, Trabajo,
+                      Usuario, UsuarioActualizar, UsuarioCrear, UsuarioReemplazar)
+
 password_hash = PasswordHash.recommended()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    pool.open(wait=True)
+    db.pool.open(wait=True)
     try:
         yield
     finally:
-        pool.close()
+        db.pool.close()
+
 
 app = FastAPI(title='EcoAlert Tambopata - CRUD inicial', version='0.1.0', lifespan=lifespan,
               description='Implementación parcial del contrato OpenAPI; ver README para límites.')
 
-class UsuarioCrear(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    nombre_completo: str = Field(min_length=1)
-    correo: EmailStr
-    rol: Literal['analista_sig','coordinacion']
-    password_temporal: str = Field(min_length=8)
+registrar_errores(app)
 
-class UsuarioActualizar(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    nombre_completo: str | None = Field(default=None, min_length=1)
-    rol: Literal['analista_sig','coordinacion'] | None = None
-    activo: bool | None = None
+# El contrato OpenAPI publica sus operaciones bajo /api/v1; /salud queda fuera por no ser contractual.
+router = APIRouter(prefix='/api/v1')
 
-class CambioEstadoSolicitud(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    estado_nuevo: Literal['nueva','en_revision','requiere_verificacion','revisada','descartada']
-    texto: str | None = None
+CodigoZona = Annotated[str, Path(pattern=CODIGO_ZONA)]
+USER_FIELDS = 'id,nombre_completo,correo,rol,activo,debe_cambiar_password,creado_en'
+ALERTA_FIELDS = 'id,fuente,codigo,fecha_deteccion,fecha_ingesta,presente_en_ultima_carga,zona_codigo,area_ha'
 
-class MarcaAnalistaSolicitud(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    texto: str = Field(min_length=1)
 
-class RetiroMarcaSolicitud(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    activa: Literal[False]
-    motivo_retiro: str = Field(min_length=1)
+def ref(alias):
+    """UsuarioRef (id, nombre_completo) o NULL, a partir de un LEFT JOIN con usuarios."""
+    return (f"CASE WHEN {alias}.id IS NULL THEN NULL "
+            f"ELSE json_build_object('id', {alias}.id, 'nombre_completo', {alias}.nombre_completo) END")
 
-class AjusteSolicitud(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    forma: Literal['por_puntaje','por_nivel']
-    puntaje: int | None = Field(default=None, ge=0, le=100)
-    nivel: Literal['alta','media','baja'] | None = None
-    justificacion: str = Field(min_length=1)
-    @model_validator(mode='after')
-    def validar(self):
-        if self.forma == 'por_puntaje' and (self.puntaje is None or self.nivel is not None):
-            raise ValueError('por_puntaje requiere puntaje y no nivel')
-        if self.forma == 'por_nivel' and (self.nivel is None or self.puntaje is not None):
-            raise ValueError('por_nivel requiere nivel y no puntaje')
-        return self
 
-class RetiroAjusteSolicitud(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    estado: Literal['retirado']
-    justificacion_retiro: str = Field(min_length=1)
+CARGAS_SQL = f'''SELECT c.id, c.fuente, c.fecha_corte, c.cargada_en, {ref('u')} AS cargada_por,
+    c.alertas_en_archivo, c.alertas_nuevas, c.alertas_existentes, c.alertas_fuera_ambito, c.alertas_ausentes,
+    c.zonas_creadas, c.zonas_actualizadas, COALESCE(c.resumen, '') AS resumen
+    FROM cargas_alertas c JOIN usuarios u ON u.id = c.cargada_por'''
 
-# Contrato OpenAPI: Error {codigo,mensaje}; validaciones FastAPI 422 son adaptadas.
-@app.exception_handler(HTTPException)
-async def http_error(request: Request, exc: HTTPException):
-    detail = exc.detail
-    return JSONResponse(status_code=exc.status_code, content={
-        'codigo': f'HTTP_{exc.status_code}', 'mensaje': detail if isinstance(detail,str) else str(detail)
-    })
+MARCAS_SQL = f'''SELECT m.id, m.tipo, m.origen, m.rotulo, m.texto, m.activa, m.creada_en,
+    {ref('uc')} AS creada_por, m.retirada_en, {ref('ur')} AS retirada_por, m.motivo_retiro
+    FROM marcas m LEFT JOIN usuarios uc ON uc.id = m.creada_por LEFT JOIN usuarios ur ON ur.id = m.retirada_por'''
 
-from fastapi.exceptions import RequestValidationError
-@app.exception_handler(RequestValidationError)
-async def validation_error(request: Request, exc: RequestValidationError):
-    return JSONResponse(status_code=422, content={'codigo':'DATOS_INVALIDOS','mensaje':'Datos de solicitud inválidos',
-                                                   'detalles': [{'campo':'.'.join(map(str,e['loc'])), 'mensaje':e['msg']} for e in exc.errors()]})
+AJUSTES_SQL = f'''SELECT a.id, a.forma, a.nivel_elegido::text AS nivel_elegido, a.puntaje_ajustado,
+    a.puntaje_calculado_al_ajustar, a.justificacion, a.estado, a.creado_en, {ref('uc')} AS creado_por,
+    a.retirado_en, {ref('ur')} AS retirado_por, a.justificacion_retiro
+    FROM ajustes_prioridad a JOIN usuarios uc ON uc.id = a.creado_por LEFT JOIN usuarios ur ON ur.id = a.retirado_por'''
 
-def fail(status, message):
-    raise HTTPException(status_code=status, detail=message)
+# Sin autor (autor_id nulo) la entrada es del sistema, p. ej. la creación de la zona (RF-12-AC-19).
+HISTORIAL_SQL = '''SELECT h.id, h.tipo_accion, h.fecha_hora,
+    CASE WHEN u.id IS NULL THEN json_build_object('tipo', 'sistema', 'nombre', 'Sistema')
+         ELSE json_build_object('tipo', 'usuario', 'id', u.id, 'nombre', u.nombre_completo) END AS autor,
+    h.codigo_alerta_origen, h.estado_anterior::text AS estado_anterior, h.estado_nuevo::text AS estado_nuevo,
+    h.ajuste_id, h.forma, h.nivel_elegido::text AS nivel_elegido, h.puntaje_calculado, h.puntaje_ajustado,
+    h.marca_id, h.texto_marca, h.texto
+    FROM entradas_historial h LEFT JOIN usuarios u ON u.id = h.autor_id'''
 
-def sql_error(exc):
-    if isinstance(exc, UniqueViolation): fail(409,'Recurso duplicado')
-    if isinstance(exc, (CheckViolation, ForeignKeyViolation)): fail(400,'Los datos violan una restricción de integridad')
-    raise exc
 
-def run(sql, params=None, *, one=False):
-    with pool.connection() as conn:
-        try:
-            with conn.cursor() as cur:
-                cur.execute(sql, params or ())
-                result = cur.fetchone() if one else cur.fetchall() if cur.description else None
-            return result
-        except (UniqueViolation,CheckViolation,ForeignKeyViolation) as exc:
-            sql_error(exc)
+def encontrado(fila, mensaje):
+    if not fila:
+        raise no_encontrado(mensaje)
+    return fila
 
-def json_safe(value):
-    if isinstance(value, dict): return {k:json_safe(v) for k,v in value.items()}
-    if isinstance(value,list): return [json_safe(v) for v in value]
-    if isinstance(value,(UUID,Decimal,datetime)): return str(value)
-    return value
 
-USER_FIELDS='id,nombre_completo,correo,rol,activo,debe_cambiar_password,creado_en'
+def exigir_merge_patch(request: Request):
+    if request.headers.get('content-type', '').split(';')[0].strip().lower() != 'application/merge-patch+json':
+        raise ApiError(415, 'TIPO_CONTENIDO_NO_SOPORTADO', 'Usa Content-Type application/merge-patch+json')
+
 
 @app.get('/salud')
 def salud():
-    return {'estado':'ok','base_datos':bool(run('SELECT 1 AS ok',one=True))}
+    return {'estado': 'ok', 'base_datos': bool(db.run('SELECT 1 AS ok', one=True))}
 
-@app.get('/usuarios')
-def listar_usuarios(activo: bool | None=None):
-    rows=run(f'SELECT {USER_FIELDS} FROM usuarios WHERE (%s::boolean IS NULL OR activo=%s) ORDER BY nombre_completo', (activo,activo))
-    return json_safe(rows)
 
-@app.post('/usuarios',status_code=201)
-def crear_usuario(body: UsuarioCrear):
-    return json_safe(run(f'''INSERT INTO usuarios (nombre_completo,correo,rol,password_hash)
-        VALUES (%s,%s,%s,%s) RETURNING {USER_FIELDS}''',
-        (body.nombre_completo, str(body.correo),body.rol,password_hash.hash(body.password_temporal)),one=True))
+@router.get('/usuarios', response_model=list[Usuario])
+def listar_usuarios(activo: bool | None = None):
+    return db.run(f'SELECT {USER_FIELDS} FROM usuarios WHERE (%s::boolean IS NULL OR activo=%s) ORDER BY nombre_completo',
+                  (activo, activo))
 
-@app.get('/usuarios/{usuarioId}')
+
+@router.post('/usuarios', status_code=201, response_model=Usuario)
+def crear_usuario(body: UsuarioCrear, response: Response, idempotency_key: Annotated[UUID, Header()]):
+    operacion = 'crearUsuario'
+    huella = db.huella(body.model_dump(mode='json'))
+    with db.transaction() as conn:
+        previa = db.respuesta_previa(conn, idempotency_key, operacion, huella)
+        if previa:
+            return JSONResponse(previa['cuerpo_respuesta'], previa['estado_http'], {'Location': previa['location']})
+        try:
+            fila = db.query(conn, f'INSERT INTO usuarios (nombre_completo, correo, rol, password_hash) '
+                                  f'VALUES (%s, %s, %s, %s) RETURNING {USER_FIELDS}',
+                            (body.nombre_completo, str(body.correo), body.rol, password_hash.hash(body.password_temporal)),
+                            one=True)
+        except UniqueViolation:
+            raise ApiError(409, 'CORREO_DUPLICADO', 'Ya existe una cuenta con ese correo') from None
+        usuario = Usuario(**fila)
+        location = app.url_path_for('obtener_usuario', usuarioId=usuario.id)
+        db.guardar_respuesta(conn, idempotency_key, operacion, huella, 201, usuario.model_dump(mode='json'), location)
+    response.headers['Location'] = location
+    return usuario
+
+
+@router.get('/usuarios/{usuarioId}', response_model=Usuario)
 def obtener_usuario(usuarioId: UUID):
-    row=run(f'SELECT {USER_FIELDS} FROM usuarios WHERE id=%s',(usuarioId,),one=True)
-    if not row: fail(404,'Usuario no encontrado')
-    return json_safe(row)
+    return encontrado(db.run(f'SELECT {USER_FIELDS} FROM usuarios WHERE id=%s', (usuarioId,), one=True),
+                      f'No existe el usuario {usuarioId}')
 
-@app.patch('/usuarios/{usuarioId}')
+
+def aplicar_cambios(usuarioId: UUID, cambios: dict):
+    """Actualización transaccional de una cuenta, compartida por PUT y PATCH."""
+    with db.transaction() as conn:
+        # Se bloquean las cuentas de coordinación activas para que dos cambios simultáneos no dejen el sistema sin ninguna.
+        coordinacion = db.query(conn, "SELECT id FROM usuarios WHERE rol='coordinacion' AND activo ORDER BY id FOR UPDATE")
+        actual = encontrado(db.query(conn, 'SELECT rol, activo FROM usuarios WHERE id=%s FOR UPDATE', (usuarioId,), one=True),
+                            f'No existe el usuario {usuarioId}')
+        desactiva = cambios.get('activo') is False
+        quita_rol = cambios.get('rol', actual['rol']) != 'coordinacion'
+        if actual['rol'] == 'coordinacion' and actual['activo'] and len(coordinacion) == 1 and (desactiva or quita_rol):
+            accion = 'desactivar' if desactiva else 'quitar el rol a'
+            raise ApiError(409, 'ULTIMA_COORDINACION', f'No se puede {accion} la última cuenta de coordinación')
+        # Los nombres de columna provienen del esquema (extra='forbid'), nunca del cliente.
+        asignaciones = ', '.join(f'{campo}=%s' for campo in cambios)
+        fila = db.query(conn, f'UPDATE usuarios SET {asignaciones} WHERE id=%s RETURNING {USER_FIELDS}',
+                        (*cambios.values(), usuarioId), one=True)
+        if desactiva:
+            db.query(conn, 'UPDATE sesiones SET revocada_en = now() WHERE usuario_id=%s AND revocada_en IS NULL',
+                     (usuarioId,))
+    return fila
+
+
+@router.put('/usuarios/{usuarioId}', response_model=Usuario)
+def reemplazar_usuario(usuarioId: UUID, body: UsuarioReemplazar):
+    return aplicar_cambios(usuarioId, body.model_dump())
+
+
+@router.patch('/usuarios/{usuarioId}', response_model=Usuario, dependencies=[Depends(exigir_merge_patch)])
 def actualizar_usuario(usuarioId: UUID, body: UsuarioActualizar):
-    data=body.model_dump(exclude_unset=True)
-    if not data or any(v is None for v in data.values()): fail(400,'Debe indicar al menos un campo válido')
-    # Lista blanca de campos, nunca interpolar nombres provenientes directamente del usuario.
-    fields=[k for k in ('nombre_completo','rol','activo') if k in data]
-    updates=', '.join(f'{k}=%s' for k in fields)
-    row=run(f'UPDATE usuarios SET {updates} WHERE id=%s RETURNING {USER_FIELDS}',
-            tuple(data[k] for k in fields)+(usuarioId,),one=True)
-    if not row: fail(404,'Usuario no encontrado')
-    return json_safe(row)
+    return aplicar_cambios(usuarioId, body.model_dump(exclude_unset=True))
 
-@app.get('/alertas')
-def listar_alertas():
-    return json_safe(run('''SELECT id,fuente,codigo,fecha_deteccion,fecha_ingesta,
-        presente_en_ultima_carga,zona_codigo,area_ha FROM alertas ORDER BY fecha_deteccion DESC'''))
 
-@app.get('/cargas-alertas')
+@router.get('/alertas', response_model=PaginaAlertas)
+def listar_alertas(zona: Annotated[str | None, Query(pattern=CODIGO_ZONA)] = None,
+                   presente_en_ultima_carga: bool | None = None,
+                   limite: Annotated[int, Query(ge=1, le=500)] = 100,
+                   desplazamiento: Annotated[int, Query(ge=0)] = 0):
+    # El contrato exige zona y área en toda alerta; las aún sin agrupar o sin área no se publican.
+    filtros, params = ['zona_codigo IS NOT NULL', 'area_ha IS NOT NULL'], []
+    if zona is not None:
+        filtros.append('zona_codigo=%s')
+        params.append(zona)
+    if presente_en_ultima_carga is not None:
+        filtros.append('presente_en_ultima_carga=%s')
+        params.append(presente_en_ultima_carga)
+    donde = ' AND '.join(filtros)
+    with db.transaction() as conn:
+        total = db.query(conn, f'SELECT count(*) AS total FROM alertas WHERE {donde}', params, one=True)['total']
+        alertas = db.query(conn, f'SELECT {ALERTA_FIELDS} FROM alertas WHERE {donde} '
+                                 'ORDER BY fecha_deteccion DESC, id LIMIT %s OFFSET %s', (*params, limite, desplazamiento))
+    return {'total': total, 'limite': limite, 'desplazamiento': desplazamiento, 'alertas': alertas}
+
+
+@router.get('/cargas-alertas', response_model=list[CargaAlertas])
 def listar_cargas():
-    return json_safe(run('''SELECT id,fuente,fecha_corte,cargada_en,cargada_por,alertas_en_archivo,
-        alertas_nuevas,alertas_existentes,alertas_fuera_ambito,alertas_ausentes,
-        zonas_creadas,zonas_actualizadas,resumen FROM cargas_alertas ORDER BY cargada_en DESC'''))
+    return db.run(CARGAS_SQL + ' ORDER BY c.cargada_en DESC, c.id')
 
-@app.get('/cargas-alertas/{cargaId}')
+
+@router.get('/cargas-alertas/{cargaId}', response_model=CargaAlertas)
 def obtener_carga(cargaId: UUID):
-    row=run('''SELECT id,fuente,fecha_corte,cargada_en,cargada_por,alertas_en_archivo,
-        alertas_nuevas,alertas_existentes,alertas_fuera_ambito,alertas_ausentes,
-        zonas_creadas,zonas_actualizadas,resumen FROM cargas_alertas WHERE id=%s''',(cargaId,),one=True)
-    if not row: fail(404,'Carga no encontrada')
-    return json_safe(row)
+    return encontrado(db.run(CARGAS_SQL + ' WHERE c.id=%s', (cargaId,), one=True), f'No existe la carga {cargaId}')
 
-@app.get('/zonas/{codigo}/marcas')
-def listar_marcas(codigo: str, incluir_retiradas: bool=False):
+
+@router.get('/zonas/{codigo}/marcas', response_model=list[Marca], response_model_exclude_none=True)
+def listar_marcas(codigo: CodigoZona, incluir_retiradas: bool = False):
     ensure_zone(codigo)
-    return json_safe(run('SELECT * FROM marcas WHERE zona_codigo=%s AND (%s OR activa) ORDER BY creada_en DESC',
-                         (codigo,incluir_retiradas)))
+    return db.run(MARCAS_SQL + ' WHERE m.zona_codigo=%s AND (%s OR m.activa) ORDER BY m.creada_en DESC, m.id',
+                  (codigo, incluir_retiradas))
 
-@app.get('/zonas/{codigo}/marcas/{marcaId}')
-def obtener_marca(codigo: str,marcaId: UUID):
-    row=run('SELECT * FROM marcas WHERE zona_codigo=%s AND id=%s',(codigo,marcaId),one=True)
-    if not row: fail(404,'Marca no encontrada')
-    return json_safe(row)
+
+@router.get('/zonas/{codigo}/marcas/{marcaId}', response_model=Marca, response_model_exclude_none=True)
+def obtener_marca(codigo: CodigoZona, marcaId: UUID):
+    return encontrado(db.run(MARCAS_SQL + ' WHERE m.zona_codigo=%s AND m.id=%s', (codigo, marcaId), one=True),
+                      f'No existe la marca {marcaId}')
+
 
 # El API requiere actor autenticado para crear/retirar marcas, ajustes y cambios.
 # No se habilitan escrituras sin identidad verificable: implementar /auth/sesion primero.
 def ensure_zone(codigo):
-    if not run('SELECT codigo FROM zonas_cambio WHERE codigo=%s',(codigo,),one=True): fail(404,'Zona no encontrada')
+    encontrado(db.run('SELECT 1 FROM zonas_cambio WHERE codigo=%s', (codigo,), one=True), f'No existe la zona {codigo}')
 
-@app.get('/zonas/{codigo}/ajustes')
-def listar_ajustes(codigo: str):
+
+@router.get('/zonas/{codigo}/ajustes', response_model=list[AjustePrioridad])
+def listar_ajustes(codigo: CodigoZona):
     ensure_zone(codigo)
-    return json_safe(run('SELECT * FROM ajustes_prioridad WHERE zona_codigo=%s ORDER BY creado_en DESC',(codigo,)))
+    return db.run(AJUSTES_SQL + ' WHERE a.zona_codigo=%s ORDER BY a.creado_en DESC, a.id', (codigo,))
 
-@app.get('/zonas/{codigo}/ajustes/{ajusteId}')
-def obtener_ajuste(codigo: str, ajusteId: UUID):
-    row=run('SELECT * FROM ajustes_prioridad WHERE zona_codigo=%s AND id=%s',(codigo,ajusteId),one=True)
-    if not row: fail(404,'Ajuste no encontrado')
-    return json_safe(row)
 
-@app.get('/zonas/{codigo}/historial')
-def historial(codigo: str):
+@router.get('/zonas/{codigo}/ajustes/{ajusteId}', response_model=AjustePrioridad)
+def obtener_ajuste(codigo: CodigoZona, ajusteId: UUID):
+    return encontrado(db.run(AJUSTES_SQL + ' WHERE a.zona_codigo=%s AND a.id=%s', (codigo, ajusteId), one=True),
+                      f'No existe el ajuste {ajusteId}')
+
+
+# Orden cronológico ascendente: la primera entrada es la creación de la zona (RF-12-AC-19).
+@router.get('/zonas/{codigo}/historial', response_model=list[EntradaHistorial], response_model_exclude_none=True)
+def historial(codigo: CodigoZona):
     ensure_zone(codigo)
-    return json_safe(run('''SELECT h.id,h.tipo_accion,h.fecha_hora,h.codigo_alerta_origen,h.estado_anterior,
-        h.estado_nuevo,h.ajuste_id,h.forma,h.nivel_elegido,h.puntaje_calculado,h.puntaje_ajustado,
-        h.marca_id,h.texto_marca,h.texto,
-        json_build_object('id',u.id,'nombre_completo',u.nombre_completo) AS autor
-        FROM entradas_historial h JOIN usuarios u ON u.id=h.autor_id
-        WHERE h.zona_codigo=%s ORDER BY h.fecha_hora DESC''',(codigo,)))
+    return db.run(HISTORIAL_SQL + ' WHERE h.zona_codigo=%s ORDER BY h.fecha_hora, h.id', (codigo,))
 
-@app.get('/zonas/{codigo}/historial/{entradaId}')
-def historial_entrada(codigo: str,entradaId: UUID):
-    rows=run('''SELECT h.id,h.tipo_accion,h.fecha_hora,h.codigo_alerta_origen,h.estado_anterior,
-        h.estado_nuevo,h.ajuste_id,h.forma,h.nivel_elegido,h.puntaje_calculado,h.puntaje_ajustado,
-        h.marca_id,h.texto_marca,h.texto,
-        json_build_object('id',u.id,'nombre_completo',u.nombre_completo) AS autor
-        FROM entradas_historial h JOIN usuarios u ON u.id=h.autor_id
-        WHERE h.zona_codigo=%s AND h.id=%s''',(codigo,entradaId),one=True)
-    if not rows: fail(404,'Entrada de historial no encontrada')
-    return json_safe(rows)
 
-@app.get('/trabajos/{trabajoId}')
+@router.get('/zonas/{codigo}/historial/{entradaId}', response_model=EntradaHistorial, response_model_exclude_none=True)
+def historial_entrada(codigo: CodigoZona, entradaId: UUID):
+    return encontrado(db.run(HISTORIAL_SQL + ' WHERE h.zona_codigo=%s AND h.id=%s', (codigo, entradaId), one=True),
+                      f'No existe la entrada de historial {entradaId}')
+
+
+@router.get('/trabajos/{trabajoId}', response_model=Trabajo, response_model_exclude_none=True)
 def obtener_trabajo(trabajoId: UUID):
-    row=run('SELECT * FROM trabajos WHERE id=%s',(trabajoId,),one=True)
-    if not row: fail(404,'Trabajo no encontrado')
-    return json_safe(row)
+    return encontrado(db.run('SELECT id, tipo, estado, creado_en, actualizado_en, mensaje_estado, resultado, error '
+                             'FROM trabajos WHERE id=%s', (trabajoId,), one=True),
+                      f'No existe el trabajo {trabajoId}')
+
+
+app.include_router(router)
