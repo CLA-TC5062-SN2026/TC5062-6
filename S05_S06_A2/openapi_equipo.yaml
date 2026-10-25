@@ -1,0 +1,3572 @@
+openapi: 3.0.3
+
+info:
+  title: EcoAlert Tambopata — API REST consolidada del equipo
+  version: 1.2.0
+  description: |
+    Contrato de la API REST del backend de **EcoAlert Tambopata** (enfoque *spec-first*).
+    Este documento precede al código (S05-S06-A1) y a las pruebas (S09-A1): el código se
+    construye para cumplirlo y las pruebas lo verifican.
+
+    **Fuente de los requerimientos:** `SRS_equipo.md`, línea base v1.0. Alcance: RF-01 a RF-17 (Must).
+
+    ## Trazabilidad
+    Cada operación declara tres extensiones:
+    - `x-acceptance-criteria`: criterios Given-When-Then del SRS (`RF-XX-AC-Y`) que la operación
+      satisface y que se verifican con pruebas de API (`test_RF_09_AC_1`).
+    - `x-e2e-support`: criterios marcados en el SRS como *Prueba E2E de interfaz* para los que la
+      operación entrega los datos. Se verifican en la interfaz, no solo en la API.
+    - `x-roles`: roles autorizados según la matriz de permisos (sección 2.3 del SRS).
+
+    Un criterio del alcance sin operación asociada es un gap de diseño.
+
+    ## Cobertura (SRS v1.0, 225 criterios)
+    | Grupo | Criterios | Estado |
+    |---|---|---|
+    | Must verificables por API (RF-01 a RF-17) | 157 | 157 en `x-acceptance-criteria`; sin gaps |
+    | Must E2E de interfaz | 9 | 9 en `x-e2e-support`; sin gaps |
+    | Should (RF-18 a RF-26, RF-34 a RF-37) | 42 | Fuera del alcance de la v1.0 del contrato |
+    | Could (RF-27 a RF-33, RF-38, RF-39) | 17 | Fuera del alcance de la v1.0 del contrato |
+
+    Los criterios Should y Could no tienen operaciones a propósito: el contrato cubre el MVP.
+    Cuando se incorpore un RF Should o Could, se agregan sus operaciones en una versión menor
+    del contrato (1.x) antes de escribir el código.
+
+    ## Autenticación (RNF-01, RF-01)
+    Todas las operaciones exigen `Authorization: Bearer <JWT>`, salvo `POST /auth/login`.
+    El JWT (HS256) incluye `sub`, `rol`, `jti`, `iat`, `nbf`, `exp`, `iss` y `aud`; `exp` se fija con
+    la variable de entorno `JWT_EXPIRATION` (vida máxima, en segundos). El servidor guarda la
+    sesión asociada al `jti`:
+    - cada solicitud renueva la última actividad;
+    - tras 30 min sin actividad (PS-12) la sesión expira y la API responde 401 (RF-01-AC-4);
+    - al cerrar sesión, el `jti` se invalida y el token deja de servir (RF-01-AC-6).
+
+    Mientras el usuario tenga una contraseña temporal, toda operación distinta de
+    `GET /auth/me`, `PUT /auth/password` y `POST /auth/logout` responde 403 con el código
+    `CAMBIO_PASSWORD_REQUERIDO` (RF-02-AC-4).
+
+    ## Convenciones de respuesta
+    | Código | Uso |
+    |---|---|
+    | 200 | Consulta o modificación exitosa |
+    | 201 | Recurso creado; siempre incluye `Location` con la URL del recurso creado |
+    | 202 | Proceso aceptado; `Location` apunta a `GET /trabajos/{trabajoId}` (RNF-04) |
+    | 204 | Operación exitosa sin cuerpo |
+    | 400 | Solicitud mal formada: JSON ilegible, multipart corrupto o parámetro con sintaxis inválida |
+    | 401 | Sin token, token inválido, sesión expirada o cerrada; incluye `WWW-Authenticate` |
+    | 403 | Rol sin permiso (RNF-02) o cambio de contraseña pendiente |
+    | 404 | El recurso no existe |
+    | 409 | Conflicto con el estado actual (correo duplicado, última cuenta de coordinación) |
+    | 415 | Tipo de contenido no soportado (p. ej., PATCH sin `application/merge-patch+json`) |
+    | 422 | El cuerpo es legible pero no cumple el esquema o una regla de negocio; o la clave de idempotencia se reutilizó con otro cuerpo |
+    | 429 | Límite de solicitudes excedido; incluye `Retry-After` |
+    | 500 | Error interno no previsto |
+    | 503 | Servicio en mantenimiento o saturado; incluye `Retry-After` |
+
+    Todos los errores se entregan como `application/problem+json` (RFC 9457) con el esquema
+    `Error`. Los miembros de extensión `codigo` y `mensaje` son obligatorios; los mensajes están
+    en español (RNF-06).
+
+    ## Idempotencia
+    Todos los POST que crean recursos o procesos exigen la cabecera `Idempotency-Key` (UUID).
+    Un reintento con la misma clave y el mismo cuerpo dentro de 24 h devuelve la respuesta
+    original sin repetir la operación; así, un reintento por corte de red no duplica una
+    ingesta, un ajuste, una marca, un cambio de estado ni un análisis almacenado. La única
+    excepción es `POST /auth/login`, porque iniciar sesión dos veces no tiene efectos
+    acumulativos sobre los datos.
+
+    ## Operaciones que no existen a propósito
+    La API no expone borrado de cuentas (RF-02-AC-7), de zonas (RF-12-AC-17) ni modificación o
+    borrado de análisis (RF-15-AC-3). Esos métodos responden 405 Method Not Allowed.
+    Las cuentas se modifican solo con `PATCH /usuarios/{usuarioId}` (JSON Merge Patch); no hay PUT.
+
+    ## Historial de cambios del contrato
+    - **1.2.0** (S05-S06-A2, módulo de autenticación JWT): `/auth/sesion` se divide en `POST /auth/login`
+      (200, antes 201), `GET /auth/me` y `POST /auth/logout`; se añade `POST /auth/register`,
+      equivalente a `crearUsuario` y exclusivo de Coordinación; `CredencialesLogin.usuario` pasa a
+      `correo`; `SesionCreada` añade `expires_in`; el JWT declara `exp`, `iat`, `nbf`, `iss` y `aud`;
+      el esquema de seguridad se llama `BearerAuth` (antes `bearerAuth`).
+    - **1.1.0** (antes de implementar; sin clientes afectados): `Idempotency-Key` en los POST de
+      creación; PUT y PATCH de usuarios unificados en un PATCH parcial (`actualizarUsuario`);
+      `Location` en todas las respuestas 201 y nuevos GET individuales de ajuste, marca y entrada
+      del historial; errores como `application/problem+json`; `WWW-Authenticate` en 401;
+      respuestas 429 y 503 en todas las operaciones.
+    - **1.0.0**: versión inicial (RF-01 a RF-17).
+
+    ## Sistemas de referencia (RD-10)
+    Las geometrías se almacenan en EPSG:32719. Toda geometría que entrega la API está en
+    EPSG:4326 (GeoJSON, RFC 7946). Áreas en hectáreas con dos decimales; distancias en metros enteros.
+
+    ## Datos que la API nunca entrega (RD-02, RD-04)
+    Ningún esquema tiene un campo para el titular minero ni para causas o legalidad del cambio.
+    Los esquemas sensibles declaran `additionalProperties: false`.
+
+    ## Consolidación del equipo
+    Se toma como contrato base la propuesta DMV por su cobertura de los criterios Must.
+    Se contrastaron las alternativas AGGS, EDSM y MAA; se unifican nombres en español,
+    recursos en plural, carga previa de archivos, procesamiento asíncrono de ingestas,
+    y eventos históricos auditables. La decisión de usar 201 o 202 depende de si el
+    recurso queda creado o si se inicia un proceso pendiente.
+    Las funcionalidades Should y Could permanecen fuera del MVP, conforme al SRS.
+  contact:
+    name: Equipo 6 — TC5062 Gpo 10
+
+servers:
+- url: https://ecoalert.example.org/api/v1
+  description: Producción (VPS, detrás de Nginx con TLS 1.2+)
+- url: http://localhost:8000/api/v1
+  description: Desarrollo local (Docker Compose)
+
+security:
+- BearerAuth: []
+
+tags:
+- name: Autenticación
+  description: Inicio y cierre de sesión, cambio de contraseña (RF-01, RF-02)
+- name: Usuarios
+  description: Gestión de cuentas por la coordinación (RF-02)
+- name: Archivos
+  description: Subida e inspección de archivos geoespaciales antes de asignar columnas (RF-03, RF-04)
+- name: Capas de referencia
+  description: Versiones de las capas de referencia (RF-03, RF-07)
+- name: Alertas
+  description: Ingesta acumulativa de alertas de GeoBosques (RF-04, RF-05, RF-07)
+- name: Trabajos
+  description: Estado de los procesos asíncronos (RNF-04)
+- name: Mapa
+  description: Capas activables del mapa y sus elementos (RF-06, RF-07)
+- name: Zonas
+  description: Lista priorizada, detalle, priorización y contexto (RF-05, RF-08, RF-09, RF-10)
+- name: Revisión de zonas
+  description: Estados, ajustes de prioridad, marcas e historial (RF-11, RF-12, RF-13)
+- name: Análisis de periodos
+  description: Comparación de dos periodos y análisis almacenados (RF-14, RF-15)
+- name: Exportaciones
+  description: Exportación de la lista de zonas a CSV y GeoJSON (RF-16, RF-17)
+
+paths:
+
+  # ================================================================
+  # AUTENTICACIÓN
+  # ================================================================
+  /auth/login:
+    post:
+      tags: [Autenticación]
+      operationId: iniciarSesion
+      summary: Iniciar sesión
+      description: |
+        Verifica correo y contraseña, registra una sesión y entrega un JWT. El mensaje de error no
+        revela si falló el correo o la contraseña. Una cuenta desactivada no puede iniciar sesión.
+        Responde 200 y no 201: entrega una credencial, no un recurso direccionable (como el token
+        endpoint de OAuth 2.0, RFC 6749 §5.1).
+      security: []
+      x-roles: [publico]
+      x-acceptance-criteria: [RF-01-AC-1, RF-01-AC-2, RF-01-AC-3, RF-02-AC-5]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CredencialesLogin'
+            example:
+              correo: ana.quispe@ecoalert.pe
+              password: "clave-segura-2026"
+      responses:
+        '200':
+          description: Sesión creada.
+          headers:
+            Cache-Control:
+              description: Siempre `no-store` (RFC 6749 §5.1).
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionCreada'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          description: Credenciales incorrectas, cuenta inexistente o desactivada.
+          headers:
+            WWW-Authenticate:
+              schema:
+                type: string
+                example: Bearer realm="ecoalert"
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                codigo: CREDENCIALES_INVALIDAS
+                mensaje: Usuario o contraseña incorrectos
+        '422':
+          $ref: '#/components/responses/ErrorValidacion'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /auth/register:
+    post:
+      tags: [Autenticación]
+      operationId: registrarUsuario
+      summary: Registrar una cuenta (Coordinación)
+      description: |
+        Mismo comportamiento que `crearUsuario` (`POST /usuarios`): crea la cuenta activa y con
+        `debe_cambiar_password = true`. No existe registro anónimo: solo Coordinación crea cuentas
+        (RF-02, RNF-01). La respuesta nunca incluye la contraseña ni su hash.
+      x-roles: [coordinacion]
+      x-alias-de: crearUsuario
+      x-acceptance-criteria: [RF-02-AC-1, RF-02-AC-2, RF-02-AC-3, RF-02-AC-9]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsuarioCrear'
+            example:
+              nombre_completo: Ana Quispe Mamani
+              correo: ana.quispe@ecoalert.pe
+              rol: analista_sig
+              password_temporal: "Temporal-2026"
+      responses:
+        '201':
+          description: Cuenta creada.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '422':
+          $ref: '#/components/responses/ErrorValidacion'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /auth/me:
+    get:
+      tags: [Autenticación]
+      operationId: obtenerSesionActual
+      summary: Consultar el usuario autenticado
+      description: Devuelve el usuario del token, su rol y si debe cambiar la contraseña.
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-01-AC-4, RF-01-AC-5, RF-02-AC-4]
+      x-e2e-support: [RF-01-AC-7, RF-02-AC-10, RF-12-AC-18]
+      responses:
+        '200':
+          description: Sesión vigente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionActual'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /auth/logout:
+    post:
+      tags: [Autenticación]
+      operationId: cerrarSesion
+      summary: Cerrar sesión
+      description: Revoca el `jti` del token. Reutilizar el token después responde 401.
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-01-AC-6]
+      responses:
+        '204':
+          description: Sesión cerrada.
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /auth/password:
+    put:
+      tags: [Autenticación]
+      operationId: cambiarPassword
+      summary: Cambiar la contraseña propia
+      description: |
+        Reemplaza la contraseña del usuario autenticado. Es obligatorio en el primer ingreso con
+        contraseña temporal. La nueva contraseña tiene al menos 12 caracteres (PS-15) y debe ser
+        distinta de la actual.
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-02-AC-4]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambioPassword'
+      responses:
+        '204':
+          description: Contraseña actualizada; la cuenta deja de exigir el cambio.
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '422':
+          $ref: '#/components/responses/ErrorValidacion'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  # ================================================================
+  # USUARIOS
+  # ================================================================
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /usuarios:
+    get:
+      tags: [Usuarios]
+      operationId: listarUsuarios
+      summary: Listar cuentas
+      x-roles: [coordinacion]
+      x-acceptance-criteria: [RF-02-AC-9]
+      parameters:
+      - name: activo
+        in: query
+        required: false
+        description: Filtra por cuentas activas o desactivadas.
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: Lista de cuentas.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+    post:
+      tags: [Usuarios]
+      operationId: crearUsuario
+      summary: Crear una cuenta
+      description: La cuenta se crea activa y con `debe_cambiar_password = true`.
+      x-roles: [coordinacion]
+      x-acceptance-criteria: [RF-02-AC-1, RF-02-AC-2, RF-02-AC-3, RF-02-AC-9]
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsuarioCrear'
+            example:
+              nombre_completo: Ana Quispe Mamani
+              correo: ana.quispe@ecoalert.pe
+              rol: analista_sig
+              password_temporal: "Temporal-2026"
+      responses:
+        '201':
+          description: Cuenta creada.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '422':
+          description: Rol no válido o contraseña temporal demasiado corta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                rolInvalido:
+                  summary: RF-02-AC-2
+                  value:
+                    codigo: VALIDACION
+                    mensaje: El rol indicado no es válido
+                    detalles:
+                    - campo: rol
+                      mensaje: "Roles válidos: analista_sig, coordinacion"
+                passwordCorta:
+                  summary: RF-02-AC-3
+                  value:
+                    codigo: VALIDACION
+                    mensaje: La contraseña temporal es demasiado corta
+                    detalles:
+                    - campo: password_temporal
+                      mensaje: Debe tener al menos 12 caracteres
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /usuarios/{usuarioId}:
+    parameters:
+    - $ref: '#/components/parameters/UsuarioId'
+    get:
+      tags: [Usuarios]
+      operationId: obtenerUsuario
+      summary: Consultar una cuenta
+      description: La ruta no expone DELETE; un borrado responde 405 y la cuenta sigue existiendo 
+        (RF-02-AC-7).
+      x-roles: [coordinacion]
+      x-acceptance-criteria: [RF-02-AC-7, RF-02-AC-9]
+      responses:
+        '200':
+          description: Cuenta encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+    patch:
+      tags: [Usuarios]
+      operationId: actualizarUsuario
+      summary: Actualizar nombre, rol o estado de la cuenta
+      description: |
+        Actualización parcial con JSON Merge Patch (RFC 7396): solo cambian los campos enviados.
+        - `nombre_completo` y `rol`: edición de la cuenta.
+        - `activo`: desactivar o reactivar. Las cuentas no se eliminan, para conservar la autoría
+          en el historial (RF-02-AC-6). Al desactivar, se cierran las sesiones abiertas de la cuenta.
+
+        Responde 409 si la operación deja al sistema sin ninguna cuenta activa de coordinación,
+        ya sea por desactivarla o por cambiar su rol (RF-02-AC-8).
+      x-roles: [coordinacion]
+      x-acceptance-criteria: [RF-02-AC-2, RF-02-AC-5, RF-02-AC-6, RF-02-AC-8, RF-02-AC-9]
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/UsuarioActualizar'
+            examples:
+              desactivar:
+                summary: RF-02-AC-5
+                value:
+                  activo: false
+              cambiarRol:
+                summary: Edición de nombre y rol
+                value:
+                  nombre_completo: Ana Quispe Mamani
+                  rol: coordinacion
+      responses:
+        '200':
+          description: Estado de la cuenta actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          description: Conflicto con el estado actual de las cuentas.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                ultimaCoordinacion:
+                  summary: RF-02-AC-8
+                  value:
+                    codigo: ULTIMA_COORDINACION
+                    mensaje: No se puede desactivar la última cuenta de coordinación
+                ultimaCoordinacionRol:
+                  summary: RF-02-AC-8 (cambio de rol)
+                  value:
+                    codigo: ULTIMA_COORDINACION
+                    mensaje: No se puede quitar el rol a la última cuenta de coordinación
+        '415':
+          description: El cuerpo no usa `application/merge-patch+json`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                codigo: TIPO_CONTENIDO_NO_SOPORTADO
+                mensaje: Usa Content-Type application/merge-patch+json
+        '422':
+          description: Campo desconocido, cuerpo vacío o rol no válido (RF-02-AC-2).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                codigo: VALIDACION
+                mensaje: El rol indicado no es válido
+                detalles:
+                - campo: rol
+                  mensaje: 'Roles válidos: analista_sig, coordinacion'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  # ================================================================
+  # ARCHIVOS
+  # ================================================================
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /archivos:
+    post:
+      tags: [Archivos]
+      operationId: subirArchivo
+      summary: Subir e inspeccionar un archivo geoespacial
+      description: |
+        Primer paso de toda carga de capas o alertas. Recibe un Shapefile comprimido (.zip con
+        .prj) o un GeoJSON, valida el formato y el sistema de coordenadas declarado, y devuelve
+        las columnas, el tipo de geometría y el número de elementos para que el analista asigne
+        las columnas. El archivo se conserva temporalmente y se referencia por `archivo_id`.
+        No crea versiones de capa ni ingiere alertas.
+      x-roles: [analista_sig]
+      x-acceptance-criteria: [RF-03-AC-5, RF-03-AC-6, RF-03-AC-12, RF-04-AC-7]
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [archivo]
+              properties:
+                archivo:
+                  type: string
+                  format: binary
+                  description: Shapefile comprimido (.zip con .shp, .shx, .dbf y .prj) o GeoJSON (.geojson, 
+                    .json).
+      responses:
+        '201':
+          description: Archivo aceptado e inspeccionado.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InspeccionArchivo'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '422':
+          description: Formato no aceptado o archivo sin sistema de coordenadas declarado.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                formatoNoAceptado:
+                  summary: RF-03-AC-6
+                  value:
+                    codigo: FORMATO_NO_ACEPTADO
+                    mensaje: "Formato no aceptado. Formatos válidos: Shapefile comprimido (.zip) o GeoJSON"
+                sinPrj:
+                  summary: RF-03-AC-5
+                  value:
+                    codigo: SRC_NO_DECLARADO
+                    mensaje: El archivo no declara su sistema de coordenadas (falta el archivo .prj)
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  # ================================================================
+  # CAPAS DE REFERENCIA
+  # ================================================================
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /capas-referencia:
+    get:
+      tags: [Capas de referencia]
+      operationId: listarCapasReferencia
+      summary: Listar los cuatro tipos de capa de referencia
+      description: |
+        Para cada tipo devuelve la geometría esperada, los atributos de destino disponibles para
+        asignar columnas y la versión vigente (la de fecha de corte más reciente, no la última
+        cargada). El catastro minero no ofrece ningún atributo de destino para el titular.
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-03-AC-9, RF-03-AC-10, RF-03-AC-11, RF-07-AC-4, RF-07-AC-5]
+      responses:
+        '200':
+          description: Tipos de capa con su versión vigente.
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 4
+                maxItems: 4
+                items:
+                  $ref: '#/components/schemas/CapaReferencia'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /capas-referencia/{tipoCapa}/versiones:
+    parameters:
+    - $ref: '#/components/parameters/TipoCapa'
+    get:
+      tags: [Capas de referencia]
+      operationId: listarVersionesCapa
+      summary: Historial de versiones de una capa
+      description: Ordenado por fecha de corte descendente; marca la versión vigente.
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-03-AC-10, RF-03-AC-11]
+      responses:
+        '200':
+          description: Versiones de la capa (lista vacía si nunca se cargó).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VersionCapa'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+    post:
+      tags: [Capas de referencia]
+      operationId: cargarVersionCapa
+      summary: Cargar una nueva versión de una capa
+      description: |
+        Valida de inmediato la fuente, la fecha de corte, el tipo de geometría exigido por el
+        tipo de capa y la asignación de los atributos obligatorios. Si todo es válido, registra un
+        trabajo que reproyecta a EPSG:32719 y crea la versión; las columnas no asignadas no se
+        almacenan. Si la validación falla, no se crea ninguna versión.
+      x-roles: [analista_sig]
+      x-acceptance-criteria: [RF-03-AC-1, RF-03-AC-2, RF-03-AC-3, RF-03-AC-4, RF-03-AC-7, RF-03-AC-8, 
+          RF-03-AC-9, RF-03-AC-12]
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CargaVersionCapa'
+            example:
+              archivo_id: 3f2b8c1e-7a44-4d0e-9a51-2c6f0f8e1b10
+              fuente: INGEMMET
+              fecha_corte: '2026-09-15'
+              mapeo_columnas:
+                codigo: CODIGOU
+                tipo_derecho: TIPO
+                estado: ESTADO
+      responses:
+        '202':
+          $ref: '#/components/responses/TrabajoAceptado'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          description: Falta la fuente o la fecha de corte, la geometría no corresponde o falta un atributo 
+            obligatorio.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                sinFuente:
+                  summary: RF-03-AC-3
+                  value:
+                    codigo: VALIDACION
+                    mensaje: Falta la fuente de la capa
+                    detalles:
+                    - campo: fuente
+                      mensaje: Campo obligatorio
+                sinFechaCorte:
+                  summary: RF-03-AC-4
+                  value:
+                    codigo: VALIDACION
+                    mensaje: Falta la fecha de corte de la capa
+                    detalles:
+                    - campo: fecha_corte
+                      mensaje: Campo obligatorio
+                geometriaIncorrecta:
+                  summary: RF-03-AC-7
+                  value:
+                    codigo: GEOMETRIA_NO_VALIDA
+                    mensaje: La capa de ríos exige geometrías de tipo línea
+                atributoFaltante:
+                  summary: RF-03-AC-8
+                  value:
+                    codigo: VALIDACION
+                    mensaje: Falta asignar el atributo obligatorio "codigo"
+                    detalles:
+                    - campo: mapeo_columnas.codigo
+                      mensaje: Atributo obligatorio para el catastro minero
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  # ================================================================
+  # ALERTAS
+  # ================================================================
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /cargas-alertas:
+    get:
+      tags: [Alertas]
+      operationId: listarCargasAlertas
+      summary: Listar las cargas de alertas
+      description: Ordenadas por fecha de carga descendente, con su resumen.
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-04-AC-2, RF-04-AC-4, RF-07-AC-1]
+      responses:
+        '200':
+          description: Cargas de alertas.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CargaAlertas'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+    post:
+      tags: [Alertas]
+      operationId: ingerirAlertas
+      summary: Ingerir un archivo de alertas de GeoBosques
+      description: |
+        Valida de inmediato que las geometrías sean polígonos, la fecha de corte y la asignación
+        de las columnas "código" y "fecha de detección". Si todo es válido, registra un trabajo
+        que hace la ingesta acumulativa y termina con la agrupación en zonas (RF-05):
+        agrega las alertas nuevas, no duplica las existentes (misma fuente y código), descarta
+        las que están completamente fuera del ámbito y marca como no presentes las ausentes.
+        Una carga con fecha de corte anterior a la última también se ingiere.
+      x-roles: [analista_sig]
+      x-acceptance-criteria: [RF-04-AC-1, RF-04-AC-3, RF-04-AC-4, RF-04-AC-5, RF-04-AC-6, RF-04-AC-7, 
+          RF-05-AC-1, RF-05-AC-2, RF-05-AC-3, RF-05-AC-4, RF-05-AC-5, RF-05-AC-6, RF-05-AC-7, RF-05-AC-8, 
+          RF-05-AC-11, RF-12-AC-1]
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CargaAlertasSolicitud'
+            example:
+              archivo_id: 9c1d7e55-0b3a-4f6e-8d2a-71a0c3b4e912
+              fuente: GeoBosques
+              fecha_corte: '2026-09-20'
+              mapeo_columnas:
+                codigo: COD_ALERTA
+                fecha_deteccion: FECHA_DET
+      responses:
+        '202':
+          $ref: '#/components/responses/TrabajoAceptado'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          description: Geometrías que no son polígonos, columna obligatoria sin asignar o fecha de corte 
+            faltante.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                codigo: GEOMETRIA_NO_VALIDA
+                mensaje: Las alertas deben ser polígonos
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /cargas-alertas/{cargaId}:
+    parameters:
+    - name: cargaId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      tags: [Alertas]
+      operationId: obtenerCargaAlertas
+      summary: Consultar el resumen de una carga
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-04-AC-1, RF-04-AC-2, RF-04-AC-4]
+      responses:
+        '200':
+          description: Resumen de la carga.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CargaAlertas'
+              example:
+                id: 51a0f6e2-3c11-4b8a-9e47-0d2b6c7f8a90
+                fuente: GeoBosques
+                fecha_corte: '2026-09-20'
+                cargada_en: '2026-09-22T10:15:00-05:00'
+                cargada_por: {id: 0c9b2a10-1f00-4e7b-8b21-5a6e7c8d9f01, nombre_completo: Ana Quispe Mamani}
+                alertas_en_archivo: 120
+                alertas_nuevas: 115
+                alertas_existentes: 0
+                alertas_fuera_ambito: 5
+                alertas_ausentes: 0
+                zonas_creadas: 14
+                zonas_actualizadas: 0
+                resumen: 115 alertas nuevas, 0 ya existentes, 5 alertas fuera del ámbito
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /alertas:
+    get:
+      tags: [Alertas]
+      operationId: listarAlertas
+      summary: Consultar alertas ingeridas
+      description: Cada alerta indica la zona a la que pertenece (exactamente una).
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-04-AC-1, RF-04-AC-4, RF-04-AC-6, RF-09-AC-11]
+      parameters:
+      - name: zona
+        in: query
+        required: false
+        description: Código de la zona.
+        schema:
+          $ref: '#/components/schemas/CodigoZona'
+      - name: presente_en_ultima_carga
+        in: query
+        required: false
+        schema:
+          type: boolean
+      - $ref: '#/components/parameters/Limite'
+      - $ref: '#/components/parameters/Desplazamiento'
+      responses:
+        '200':
+          description: Página de alertas.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaAlertas'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  # ================================================================
+  # TRABAJOS
+  # ================================================================
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /trabajos/{trabajoId}:
+    parameters:
+    - name: trabajoId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      tags: [Trabajos]
+      operationId: obtenerTrabajo
+      summary: Consultar el estado de un trabajo
+      description: |
+        Permite mostrar un estado de procesamiento, un resultado o un error en 60 s o menos
+        (RNF-04, PS-14). Un trabajo fallido no modifica los datos previos (RNF-08).
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-03-AC-1, RF-04-AC-1]
+      responses:
+        '200':
+          description: Estado del trabajo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trabajo'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  # ================================================================
+  # MAPA
+  # ================================================================
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /mapa/capas:
+    get:
+      tags: [Mapa]
+      operationId: listarCapasMapa
+      summary: Listar las capas activables del mapa con su frescura
+      description: |
+        Devuelve exactamente seis capas. Cada una indica su fecha de corte (para las alertas, la
+        más reciente entre sus cargas), "Sin datos cargados" si nunca se cargó y, para las
+        alertas, el aviso de posible desactualización si el corte tiene más de 30 días (PS-13).
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-06-AC-1, RF-07-AC-1, RF-07-AC-3, RF-07-AC-4, RF-07-AC-5]
+      x-e2e-support: [RF-06-AC-3]
+      responses:
+        '200':
+          description: Las seis capas del mapa.
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 6
+                maxItems: 6
+                items:
+                  $ref: '#/components/schemas/CapaMapa'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /mapa/capas/{capaMapaId}/elementos:
+    parameters:
+    - $ref: '#/components/parameters/CapaMapaId'
+    get:
+      tags: [Mapa]
+      operationId: obtenerElementosCapa
+      summary: Obtener los elementos de una capa en GeoJSON
+      description: |
+        FeatureCollection en EPSG:4326 (RFC 7946) con geometrías simplificadas para el mapa.
+        Usa la versión vigente de cada capa de referencia. En la capa de zonas, cada elemento
+        trae código, nivel y marcas; el catastro minero trae tipo de derecho, código y estado,
+        nunca el titular.
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-06-AC-2, RF-06-AC-6, RF-13-AC-5]
+      x-e2e-support: [RF-06-AC-3, RF-06-AC-4, RF-06-AC-5, RF-10-AC-10]
+      parameters:
+      - name: bbox
+        in: query
+        required: false
+        description: Recorte por extensión, en EPSG:4326 (oeste, sur, este, norte).
+        style: form
+        explode: false
+        schema:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            type: number
+        example: [-69.9, -13.2, -69.1, -12.4]
+      responses:
+        '200':
+          description: Elementos de la capa.
+          content:
+            application/geo+json:
+              schema:
+                $ref: '#/components/schemas/FeatureCollection'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /mapa/capas/{capaMapaId}/elementos/{elementoId}:
+    parameters:
+    - $ref: '#/components/parameters/CapaMapaId'
+    - name: elementoId
+      in: path
+      required: true
+      description: UUID del elemento; para la capa de zonas, el código de la zona.
+      schema:
+        type: string
+    get:
+      tags: [Mapa]
+      operationId: obtenerElementoCapa
+      summary: Consultar los atributos de un elemento del mapa
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-06-AC-6]
+      responses:
+        '200':
+          description: Elemento con sus atributos.
+          content:
+            application/geo+json:
+              schema:
+                $ref: '#/components/schemas/Feature'
+              example:
+                type: Feature
+                id: 7d4c1b2a-0e9f-4a3b-8c7d-6e5f4a3b2c1d
+                geometry:
+                  type: Polygon
+                  coordinates: [[[-69.52, -12.81], [-69.50, -12.81], [-69.50, -12.83], [-69.52, -12.83], [
+                          -69.52, -12.81]]]
+                properties:
+                  capa: catastro_minero
+                  tipo_derecho: concesion
+                  codigo: '010245619'
+                  estado: TITULADO
+                  fecha_corte: '2026-09-15'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  # ================================================================
+  # ZONAS
+  # ================================================================
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /zonas:
+    get:
+      tags: [Zonas]
+      operationId: listarZonas
+      summary: Lista priorizada de zonas
+      description: |
+        Orden: puntaje vigente descendente; si empata, fecha de la alerta más reciente
+        descendente; si persiste, código ascendente. Los conteos por nivel y estado se calculan
+        sobre las zonas que cumplen el filtro. Incluye la fecha de corte de las alertas
+        ("Alertas al dd/mm/aaaa") y el aviso de desactualización cuando corresponde.
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-07-AC-2, RF-07-AC-3, RF-09-AC-14, RF-10-AC-1, RF-10-AC-2, RF-10-AC-3, 
+          RF-10-AC-4, RF-10-AC-5, RF-10-AC-6, RF-10-AC-7, RF-10-AC-8, RF-10-AC-9, RF-11-AC-1, RF-11-AC-4, 
+          RF-13-AC-5]
+      x-e2e-support: [RF-09-AC-15, RF-10-AC-10]
+      parameters:
+      - $ref: '#/components/parameters/FiltroNivel'
+      - $ref: '#/components/parameters/FiltroEstado'
+      - $ref: '#/components/parameters/BusquedaCodigo'
+      - $ref: '#/components/parameters/Limite'
+      - $ref: '#/components/parameters/Desplazamiento'
+      responses:
+        '200':
+          description: Lista de zonas con conteos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListaZonas'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '422':
+          description: Valor de filtro fuera de los enumerados (p. ej., estado "confirmada").
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /zonas/{codigo}:
+    parameters:
+    - $ref: '#/components/parameters/CodigoZona'
+    get:
+      tags: [Zonas]
+      operationId: obtenerZona
+      summary: Detalle de una zona
+      description: |
+        Incluye geometría (EPSG:4326), prioridad con desglose de 5 factores, fecha de
+        referencia y versión de pesos, ajuste vigente, marcas activas y contexto territorial con
+        las fechas de corte de las capas usadas (RNF-07). No contiene ninguna calificación de
+        legalidad ni de tipo de actividad. La ruta no expone DELETE para ningún rol (405, RF-12-AC-17).
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-12-AC-17, RF-05-AC-9, RF-05-AC-10, RF-05-AC-11, RF-08-AC-1, RF-08-AC-2, 
+          RF-08-AC-3, RF-08-AC-4, RF-08-AC-5, RF-08-AC-6, RF-08-AC-7, RF-08-AC-8, RF-09-AC-1, RF-09-AC-2, 
+          RF-09-AC-3, RF-09-AC-4, RF-09-AC-5, RF-09-AC-6, RF-09-AC-7, RF-09-AC-8, RF-09-AC-9, RF-09-AC-10, 
+          RF-09-AC-11, RF-09-AC-12, RF-09-AC-13, RF-09-AC-14, RF-11-AC-1, RF-11-AC-4, RF-11-AC-8, RF-12-AC-14, 
+          RF-13-AC-1, RF-13-AC-2, RF-13-AC-3, RF-13-AC-4, RF-13-AC-9]
+      x-e2e-support: [RF-06-AC-5, RF-09-AC-15, RF-13-AC-11]
+      responses:
+        '200':
+          description: Detalle de la zona.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZonaDetalle'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  # ================================================================
+  # REVISIÓN DE ZONAS
+  # ================================================================
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /zonas/{codigo}/historial:
+    parameters:
+    - $ref: '#/components/parameters/CodigoZona'
+    get:
+      tags: [Revisión de zonas]
+      operationId: obtenerHistorialZona
+      summary: Historial cronológico de la zona
+      description: |
+        Una sola lista cronológica con la creación, los cambios de estado, los ajustes y sus
+        retiros, y las marcas del analista y sus retiros. La primera entrada es "zona creada",
+        con usuario "Sistema" y el código de la alerta que la originó. Los autores desactivados
+        conservan su nombre.
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-02-AC-6, RF-11-AC-5, RF-11-AC-6, RF-11-AC-13, RF-12-AC-4, RF-12-AC-7, 
+          RF-12-AC-15, RF-12-AC-19, RF-12-AC-20, RF-13-AC-7]
+      responses:
+        '200':
+          description: Entradas del historial en orden cronológico ascendente.
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 1
+                items:
+                  $ref: '#/components/schemas/EntradaHistorial'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /zonas/{codigo}/historial/{entradaId}:
+    parameters:
+    - $ref: '#/components/parameters/CodigoZona'
+    - name: entradaId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      tags: [Revisión de zonas]
+      operationId: obtenerEntradaHistorial
+      summary: Consultar una entrada del historial
+      description: 'Una entrada del historial: creación, cambio de estado, ajuste o marca. Es el destino del `Location`
+        de `POST /zonas/{codigo}/cambios-estado`.'
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-12-AC-15]
+      responses:
+        '200':
+          description: Recurso encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntradaHistorial'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /zonas/{codigo}/cambios-estado:
+    parameters:
+    - $ref: '#/components/parameters/CodigoZona'
+    post:
+      tags: [Revisión de zonas]
+      operationId: cambiarEstadoZona
+      summary: Cambiar el estado de revisión de una zona
+      description: |
+        Solo se aceptan las transiciones de la tabla de RF-12:
+
+        | Desde | Hacia | Texto |
+        |---|---|---|
+        | nueva | en_revision | opcional |
+        | nueva | descartada | obligatorio (motivo) |
+        | en_revision | revisada | obligatorio |
+        | en_revision | requiere_verificacion | obligatorio |
+        | en_revision | descartada | obligatorio (motivo) |
+        | requiere_verificacion | revisada | obligatorio |
+        | requiere_verificacion | en_revision | obligatorio (motivo) |
+        | revisada / descartada | en_revision | obligatorio (reapertura; conserva el ajuste) |
+
+        "Revisada" significa que el analista terminó la revisión; no confirma causa ni legalidad (RD-11).
+      x-roles: [analista_sig]
+      x-acceptance-criteria: [RF-12-AC-2, RF-12-AC-3, RF-12-AC-4, RF-12-AC-5, RF-12-AC-6, RF-12-AC-7, 
+          RF-12-AC-8, RF-12-AC-9, RF-12-AC-10, RF-12-AC-11, RF-12-AC-12, RF-12-AC-13, RF-12-AC-14, RF-12-AC-16]
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambioEstadoSolicitud'
+            example:
+              estado_nuevo: requiere_verificacion
+              texto: posibles pozas junto al afluente
+      responses:
+        '201':
+          description: Transición registrada en el historial.
+          headers:  # /zonas/{codigo}/historial/{entradaId}
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntradaHistorial'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          description: Estado inexistente, transición fuera de la tabla o texto obligatorio faltante. El 
+            estado no cambia.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                estadoInexistente:
+                  summary: RF-12-AC-2
+                  value:
+                    codigo: VALIDACION
+                    mensaje: El estado indicado no existe
+                    detalles:
+                    - campo: estado_nuevo
+                      mensaje: "Estados válidos: nueva, en_revision, requiere_verificacion, revisada, descartada"
+                transicionNoPermitida:
+                  summary: RF-12-AC-10
+                  value:
+                    codigo: TRANSICION_NO_PERMITIDA
+                    mensaje: No se permite pasar de "nueva" a "revisada"
+                motivoFaltante:
+                  summary: RF-12-AC-5
+                  value:
+                    codigo: VALIDACION
+                    mensaje: El motivo es obligatorio para descartar una zona
+                    detalles:
+                    - campo: texto
+                      mensaje: Campo obligatorio para esta transición
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /zonas/{codigo}/ajustes:
+    parameters:
+    - $ref: '#/components/parameters/CodigoZona'
+    get:
+      tags: [Revisión de zonas]
+      operationId: listarAjustesZona
+      summary: Ajustes de prioridad de la zona
+      description: Todos los ajustes, vigentes, reemplazados y retirados, del más reciente al más antiguo.
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-11-AC-5, RF-11-AC-6, RF-11-AC-13]
+      responses:
+        '200':
+          description: Ajustes de la zona.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AjustePrioridad'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+    post:
+      tags: [Revisión de zonas]
+      operationId: ajustarPrioridad
+      summary: Fijar un puntaje ajustado
+      description: |
+        Dos formas, con justificación obligatoria:
+        - `por_puntaje`: valor entero de 0 a 100.
+        - `por_nivel`: alta, media o baja. Si sube de nivel, el puntaje es el mínimo del nivel
+          (alta = 70, media = 40); si baja, el máximo (media = 69, baja = 39). No se puede elegir
+          el nivel en el que la zona ya está.
+
+        Si ya existe un ajuste vigente, el nuevo lo reemplaza y ambos quedan en el historial.
+        El puntaje calculado se sigue actualizando.
+      x-roles: [analista_sig]
+      x-acceptance-criteria: [RF-10-AC-9, RF-11-AC-1, RF-11-AC-2, RF-11-AC-3, RF-11-AC-7, RF-11-AC-8, 
+          RF-11-AC-9, RF-11-AC-10, RF-11-AC-11, RF-11-AC-12, RF-11-AC-13]
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AjusteSolicitud'
+            examples:
+              porPuntaje:
+                summary: RF-11-AC-1
+                value:
+                  forma: por_puntaje
+                  puntaje: 80
+                  justificacion: frente activo junto al límite
+              porNivel:
+                summary: RF-11-AC-8
+                value:
+                  forma: por_nivel
+                  nivel: alta
+                  justificacion: avance hacia la quebrada
+      responses:
+        '201':
+          description: Ajuste registrado y vigente.
+          headers:  # /zonas/{codigo}/ajustes/{ajusteId}
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AjustePrioridad'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          description: Justificación faltante, puntaje fuera de rango, nivel inválido o igual al actual. El 
+            puntaje vigente no cambia.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                sinJustificacion:
+                  summary: RF-11-AC-2
+                  value:
+                    codigo: VALIDACION
+                    mensaje: La justificación es obligatoria
+                    detalles:
+                    - campo: justificacion
+                      mensaje: Campo obligatorio
+                fueraDeRango:
+                  summary: RF-11-AC-3
+                  value:
+                    codigo: VALIDACION
+                    mensaje: El puntaje debe ser un entero de 0 a 100
+                    detalles:
+                    - campo: puntaje
+                      mensaje: Rango válido de 0 a 100
+                mismoNivel:
+                  summary: RF-11-AC-11
+                  value:
+                    codigo: MISMO_NIVEL
+                    mensaje: La zona ya está en el nivel "media"
+                nivelInvalido:
+                  summary: RF-11-AC-12
+                  value:
+                    codigo: VALIDACION
+                    mensaje: El nivel indicado no es válido
+                    detalles:
+                    - campo: nivel
+                      mensaje: "Niveles válidos: alta, media, baja"
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /zonas/{codigo}/ajustes/{ajusteId}:
+    parameters:
+    - $ref: '#/components/parameters/CodigoZona'
+    - name: ajusteId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      tags: [Revisión de zonas]
+      operationId: obtenerAjuste
+      summary: Consultar un ajuste de prioridad
+      description: Ajuste con su forma, valores, autor y, si aplica, su retiro.
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-11-AC-6, RF-11-AC-13]
+      responses:
+        '200':
+          description: Recurso encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AjustePrioridad'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+    patch:
+      tags: [Revisión de zonas]
+      operationId: retirarAjuste
+      summary: Quitar el ajuste vigente
+      description: |
+        Marca el ajuste como retirado con una justificación. El puntaje vigente vuelve a ser el
+        calculado y el historial conserva el ajuste y su retiro. Solo se puede retirar el ajuste
+        vigente; cualquier otro responde 422.
+      x-roles: [analista_sig]
+      x-acceptance-criteria: [RF-11-AC-5, RF-11-AC-7]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetiroAjusteSolicitud'
+            example:
+              estado: retirado
+              justificacion_retiro: el frente se detuvo según la visita de campo
+      responses:
+        '200':
+          description: Ajuste retirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AjustePrioridad'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          $ref: '#/components/responses/ErrorValidacion'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /zonas/{codigo}/marcas:
+    parameters:
+    - $ref: '#/components/parameters/CodigoZona'
+    get:
+      tags: [Revisión de zonas]
+      operationId: listarMarcasZona
+      summary: Marcas de confianza de la zona
+      description: |
+        Marcas automáticas (solo "área pequeña" y "posible dinámica fluvial") y marcas del
+        analista. Las marcas no cambian el puntaje.
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-13-AC-1, RF-13-AC-2, RF-13-AC-3, RF-13-AC-4, RF-13-AC-5, RF-13-AC-6, 
+          RF-13-AC-9]
+      x-e2e-support: [RF-13-AC-11]
+      parameters:
+      - name: incluir_retiradas
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: Marcas de la zona.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Marca'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+    post:
+      tags: [Revisión de zonas]
+      operationId: registrarMarcaAnalista
+      summary: Registrar una marca del analista
+      description: Texto libre; es la única vía para registrar una hipótesis de causa (RD-02).
+      x-roles: [analista_sig]
+      x-acceptance-criteria: [RF-13-AC-6, RF-13-AC-10, RF-12-AC-20]
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarcaAnalistaSolicitud'
+            example:
+              texto: posible actividad minera
+      responses:
+        '201':
+          description: Marca registrada.
+          headers:  # /zonas/{codigo}/marcas/{marcaId}
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Marca'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          $ref: '#/components/responses/ErrorValidacion'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /zonas/{codigo}/marcas/{marcaId}:
+    parameters:
+    - $ref: '#/components/parameters/CodigoZona'
+    - name: marcaId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      tags: [Revisión de zonas]
+      operationId: obtenerMarca
+      summary: Consultar una marca
+      description: Marca automática o del analista, con su autor y su retiro si existe.
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-13-AC-6, RF-13-AC-7]
+      responses:
+        '200':
+          description: Recurso encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Marca'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+    patch:
+      tags: [Revisión de zonas]
+      operationId: retirarMarcaAnalista
+      summary: Retirar una marca del analista
+      description: |
+        Desactiva la marca con un motivo obligatorio. El historial conserva la marca, el retiro y
+        el motivo. Las marcas automáticas no se retiran manualmente (422).
+      x-roles: [analista_sig]
+      x-acceptance-criteria: [RF-13-AC-7, RF-13-AC-8, RF-13-AC-10]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetiroMarcaSolicitud'
+            example:
+              activa: false
+              motivo_retiro: pozas descartadas en campo
+      responses:
+        '200':
+          description: Marca retirada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Marca'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          description: Motivo faltante o marca automática. La marca sigue activa.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                codigo: VALIDACION
+                mensaje: El motivo es obligatorio para retirar la marca
+                detalles:
+                - campo: motivo_retiro
+                  mensaje: Campo obligatorio
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  # ================================================================
+  # ANÁLISIS DE PERIODOS
+  # ================================================================
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /analisis:
+    get:
+      tags: [Análisis de periodos]
+      operationId: listarAnalisis
+      summary: Listar análisis almacenados
+      description: |
+        Del más reciente al más antiguo. Si no hay ninguno, la lista está vacía y `mensaje` es
+        "Aún no hay análisis almacenados".
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-15-AC-1, RF-15-AC-4]
+      parameters:
+      - $ref: '#/components/parameters/Limite'
+      - $ref: '#/components/parameters/Desplazamiento'
+      responses:
+        '200':
+          description: Página de análisis.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListaAnalisis'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+    post:
+      tags: [Análisis de periodos]
+      operationId: ejecutarComparacion
+      summary: Comparar dos periodos
+      description: |
+        Valida los periodos (inicio ≤ fin, distintos, sin superposición), los ordena (A anterior,
+        B posterior), calcula el resultado por zona y lo almacena automáticamente de forma
+        inmutable. Estado:
+        - `incompleto` si la última fecha de corte de las alertas es anterior al fin de B;
+        - `sin_datos` si nunca se cargaron alertas;
+        - `concluido` en otro caso, incluso con 0 zonas.
+
+        Se ejecuta de forma síncrona: sobre 300 zonas responde en 60 s o menos (RNF-04).
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-14-AC-1, RF-14-AC-2, RF-14-AC-3, RF-14-AC-4, RF-14-AC-5, RF-14-AC-6, 
+          RF-14-AC-7, RF-14-AC-8, RF-14-AC-9, RF-14-AC-10, RF-14-AC-11, RF-14-AC-12, RF-14-AC-13, RF-14-AC-15]
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComparacionSolicitud'
+            example:
+              periodos:
+              - {inicio: '2026-08-01', fin: '2026-08-31'}
+              - {inicio: '2026-06-01', fin: '2026-06-30'}
+      responses:
+        '201':
+          description: Análisis ejecutado y almacenado.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Analisis'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '422':
+          description: Periodos inválidos. No se ejecuta ni se almacena el análisis.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                inicioPosterior:
+                  summary: RF-14-AC-3
+                  value:
+                    codigo: PERIODO_INVALIDO
+                    mensaje: La fecha de inicio es posterior a la de fin
+                superpuestos:
+                  summary: RF-14-AC-4
+                  value:
+                    codigo: PERIODO_INVALIDO
+                    mensaje: Los periodos no deben superponerse
+                iguales:
+                  summary: RF-14-AC-5
+                  value:
+                    codigo: PERIODO_INVALIDO
+                    mensaje: Los periodos deben ser distintos
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /analisis/{analisisId}:
+    parameters:
+    - name: analisisId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      tags: [Análisis de periodos]
+      operationId: obtenerAnalisis
+      summary: Detalle de un análisis almacenado
+      description: |
+        Devuelve exactamente lo que se almacenó. Los cambios posteriores en las zonas no lo
+        alteran. No existen operaciones de modificación ni borrado (405).
+      x-roles: [analista_sig, coordinacion]
+      x-acceptance-criteria: [RF-14-AC-13, RF-14-AC-14, RF-15-AC-2, RF-15-AC-3]
+      responses:
+        '200':
+          description: Análisis almacenado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Analisis'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  # ================================================================
+  # EXPORTACIONES
+  # ================================================================
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+  /exportaciones/zonas:
+    get:
+      tags: [Exportaciones]
+      operationId: exportarZonas
+      summary: Exportar la lista filtrada de zonas
+      description: |
+        Usa los mismos filtros y el mismo orden que `GET /zonas`.
+
+        **CSV** (`formato=csv`): UTF-8 con BOM (EF BB BF), separador coma, con las 10 columnas
+        en este orden: `codigo,nivel,puntaje calculado,puntaje ajustado,estado,fecha de creacion,
+        fecha del ultimo cambio de estado,area (ha),numero de alertas,marcas`. Los encabezados
+        definitivos van en español con tildes; estados y marcas con su etiqueta legible
+        (p. ej., "en revisión", "posible dinámica fluvial"); marcas separadas por ";";
+        "puntaje ajustado" vacío si no hay ajuste.
+
+        **GeoJSON** (`formato=geojson`): FeatureCollection RFC 7946 en EPSG:4326 con los atributos
+        `codigo`, `nivel`, `puntaje_vigente`, `estado`, `area_ha` y `fecha_alerta_mas_reciente`,
+        sin titulares.
+
+        Si el filtro no devuelve zonas, se entrega el CSV solo con encabezados o una colección
+        vacía, y la cabecera `X-Total-Zonas: 0` permite mostrar el aviso
+        "La exportación no contiene zonas".
+      x-roles: [analista_sig]
+      x-acceptance-criteria: [RF-16-AC-1, RF-16-AC-2, RF-16-AC-3, RF-16-AC-4, RF-16-AC-5, RF-16-AC-6, 
+          RF-17-AC-1, RF-17-AC-2, RF-17-AC-3, RF-17-AC-4, RF-17-AC-5, RF-17-AC-6]
+      parameters:
+      - name: formato
+        in: query
+        required: true
+        schema:
+          type: string
+          enum: [csv, geojson]
+      - $ref: '#/components/parameters/FiltroNivel'
+      - $ref: '#/components/parameters/FiltroEstado'
+      - $ref: '#/components/parameters/BusquedaCodigo'
+      responses:
+        '200':
+          description: Archivo de exportación.
+          headers:
+            Content-Disposition:
+              description: 'attachment; filename="zonas_AAAAMMDD.csv" o "zonas_AAAAMMDD.geojson"'
+              schema:
+                type: string
+            X-Total-Zonas:
+              description: Número de zonas exportadas.
+              schema:
+                type: integer
+                minimum: 0
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/geo+json:
+              schema:
+                $ref: '#/components/schemas/FeatureCollection'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '422':
+          $ref: '#/components/responses/ErrorValidacion'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+# ==================================================================
+# COMPONENTES
+# ==================================================================
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT HS256 firmado por el servidor con `sub` (id del usuario), `rol`, `jti` (id de sesión),
+        `iat`, `nbf`, `exp`, `iss` y `aud`. La validez no depende solo de la firma: el servidor
+        rechaza con 401 el token expirado (`exp`), el de una sesión inactiva por 30 min, cerrada o
+        de una cuenta desactivada. La autorización usa el rol vigente en la base de datos.
+
+  headers:
+    Location:
+      description: URL del recurso creado o del trabajo registrado.
+      schema:
+        type: string
+        format: uri-reference
+
+  parameters:
+    UsuarioId:
+      name: usuarioId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TipoCapa:
+      name: tipoCapa
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/TipoCapa'
+    CapaMapaId:
+      name: capaMapaId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/CapaMapaId'
+    CodigoZona:
+      name: codigo
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/CodigoZona'
+      example: EA-2026-014
+    FiltroNivel:
+      name: nivel
+      in: query
+      required: false
+      description: Uno o varios niveles (`nivel=alta&nivel=media`).
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          $ref: '#/components/schemas/NivelPrioridad'
+    FiltroEstado:
+      name: estado
+      in: query
+      required: false
+      description: Uno o varios estados (`estado=en_revision`).
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          $ref: '#/components/schemas/EstadoZona'
+    BusquedaCodigo:
+      name: q
+      in: query
+      required: false
+      description: Búsqueda por código de zona (coincidencia exacta o prefijo).
+      schema:
+        type: string
+        maxLength: 11
+      example: EA-2026-014
+    Limite:
+      name: limite
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 100
+    Desplazamiento:
+      name: desplazamiento
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        UUID generado por el cliente para cada intento lógico de la operación. Repetir la misma
+        clave con el mismo cuerpo durante 24 h devuelve la respuesta original (mismo código de
+        estado, mismo cuerpo y mismo `Location`) sin volver a ejecutar la operación. La misma clave
+        con un cuerpo distinto responde 422 con el código `IDEMPOTENCIA_CONFLICTO`.
+      schema:
+        type: string
+        format: uuid
+      example: 6f1c2d7e-4b8a-4e21-9c3d-0a7b5e9f1234
+  responses:
+    TrabajoAceptado:
+      description: Proceso aceptado. Consultar su avance en la URL de `Location`.
+      headers:
+        Location:
+          $ref: '#/components/headers/Location'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Trabajo'
+    SolicitudMalFormada:
+      description: La solicitud no se puede interpretar (JSON ilegible, multipart corrupto o parámetro con 
+        sintaxis inválida).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: SOLICITUD_MAL_FORMADA
+            mensaje: El cuerpo de la solicitud no es JSON válido
+    NoAutenticado:
+      description: Sin token, token inválido o sesión expirada o cerrada (RNF-01).
+      headers:
+        WWW-Authenticate:
+          description: Esquema de autenticación esperado.
+          schema:
+            type: string
+            example: Bearer realm="ecoalert", error="invalid_token"
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: NO_AUTENTICADO
+            mensaje: La sesión expiró o no es válida. Inicia sesión de nuevo.
+    Prohibido:
+      description: |
+        El rol no tiene permiso para esta acción (RNF-02) o el usuario debe cambiar su contraseña
+        temporal antes de continuar (RF-02-AC-4). No se modifica ningún dato.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            rolNoPermitido:
+              value:
+                codigo: ROL_NO_PERMITIDO
+                mensaje: Tu rol no permite realizar esta acción
+            cambioPassword:
+              value:
+                codigo: CAMBIO_PASSWORD_REQUERIDO
+                mensaje: Debes definir una contraseña nueva antes de continuar
+    NoEncontrado:
+      description: El recurso no existe.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: NO_ENCONTRADO
+            mensaje: No existe la zona EA-2026-999
+    Conflicto:
+      description: La operación entra en conflicto con el estado actual.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            correoDuplicado:
+              value:
+                codigo: CORREO_DUPLICADO
+                mensaje: Ya existe una cuenta con ese correo
+            ultimaCoordinacion:
+              value:
+                codigo: ULTIMA_COORDINACION
+                mensaje: No se puede quitar el rol a la última cuenta de coordinación
+    ErrorValidacion:
+      description: El cuerpo no cumple el esquema o una regla de negocio.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: VALIDACION
+            mensaje: La solicitud contiene datos no válidos
+            detalles:
+            - campo: justificacion
+              mensaje: Campo obligatorio
+    ErrorInterno:
+      description: Error interno no previsto. No se modifica ningún dato.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: ERROR_INTERNO
+            mensaje: Ocurrió un error inesperado. Intenta de nuevo más tarde.
+
+    DemasiadasSolicitudes:
+      description: Se excedió el límite de solicitudes. No se procesó la solicitud.
+      headers:
+        Retry-After:
+          description: Segundos de espera antes de reintentar.
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: DEMASIADAS_SOLICITUDES
+            mensaje: Demasiadas solicitudes. Espera unos segundos e intenta de nuevo.
+    ServicioNoDisponible:
+      description: Servicio en mantenimiento o saturado. No se procesó la solicitud.
+      headers:
+        Retry-After:
+          description: Segundos estimados hasta que el servicio vuelva a estar disponible.
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: SERVICIO_NO_DISPONIBLE
+            mensaje: El servicio no está disponible en este momento. Intenta más tarde.
+  schemas:
+
+    # ---------------- Comunes ----------------
+    Error:
+      type: object
+      required: [codigo, mensaje]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          default: about:blank
+        title:
+          type: string
+          description: Resumen breve del tipo de problema.
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+          description: Igual a `mensaje`; se incluye por compatibilidad con RFC 9457.
+        instance:
+          type: string
+          format: uri-reference
+        codigo:
+          type: string
+          description: Código estable para que el cliente y las pruebas distingan el caso.
+          example: VALIDACION
+        mensaje:
+          type: string
+          description: Mensaje en español para mostrar al usuario.
+        detalles:
+          type: array
+          items:
+            type: object
+            required: [campo, mensaje]
+            properties:
+              campo:
+                type: string
+              mensaje:
+                type: string
+
+      description: |
+        Problem Details (RFC 9457) con miembros de extensión. `codigo` y `mensaje` son
+        obligatorios y estables para el cliente y las pruebas; `type`, `title`, `status`,
+        `detail` e `instance` siguen el RFC.
+    UsuarioRef:
+      type: object
+      description: Referencia al autor de una acción. Conserva el nombre aunque la cuenta esté desactivada.
+      required: [id, nombre_completo]
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombre_completo:
+          type: string
+
+    Pagina:
+      type: object
+      required: [total, limite, desplazamiento]
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        limite:
+          type: integer
+        desplazamiento:
+          type: integer
+
+    # ---------------- Enumeraciones ----------------
+    Rol:
+      type: string
+      enum: [analista_sig, coordinacion]
+    TipoCapa:
+      type: string
+      enum: [limite_reserva, zona_amortiguamiento, rios, catastro_minero]
+    CapaMapaId:
+      type: string
+      enum: [limite_reserva, zona_amortiguamiento, rios, catastro_minero, alertas_geobosques, zonas_cambio]
+    EstadoZona:
+      type: string
+      description: No existe un estado "confirmada" (RD-11).
+      enum: [nueva, en_revision, requiere_verificacion, revisada, descartada]
+    NivelPrioridad:
+      type: string
+      enum: [alta, media, baja]
+    NivelVigente:
+      type: string
+      description: Nivel de la zona; `no_disponible` si ningún factor está disponible.
+      enum: [alta, media, baja, no_disponible]
+    TipoFactor:
+      type: string
+      enum: [ubicacion, persistencia_crecimiento, cercania_rios, superficie, recencia]
+    CodigoZona:
+      type: string
+      pattern: '^EA-\d{4}-\d{3}$'
+      example: EA-2026-014
+
+    # ---------------- Autenticación y usuarios ----------------
+    CredencialesLogin:
+      type: object
+      required: [correo, password]
+      additionalProperties: false
+      properties:
+        correo:
+          type: string
+          format: email
+          description: Correo de la cuenta.
+        password:
+          type: string
+          format: password
+          minLength: 1
+          writeOnly: true
+
+    SesionCreada:
+      type: object
+      required: [access_token, token_type, expires_in, inactividad_max_segundos, usuario]
+      properties:
+        access_token:
+          type: string
+          description: JWT con `sub`, `rol`, `jti`, `iat`, `nbf`, `exp`, `iss` y `aud`.
+        token_type:
+          type: string
+          enum: [bearer]
+        expires_in:
+          type: integer
+          description: Segundos de vida máxima del token (`JWT_EXPIRATION`), como en RFC 6749 §5.1.
+          example: 3600
+        inactividad_max_segundos:
+          type: integer
+          description: Expiración por inactividad (PS-12).
+          example: 1800
+        usuario:
+          $ref: '#/components/schemas/Usuario'
+
+    SesionActual:
+      type: object
+      required: [usuario, ultima_actividad]
+      properties:
+        usuario:
+          $ref: '#/components/schemas/Usuario'
+        ultima_actividad:
+          type: string
+          format: date-time
+
+    CambioPassword:
+      type: object
+      required: [password_actual, password_nueva]
+      additionalProperties: false
+      properties:
+        password_actual:
+          type: string
+          format: password
+          writeOnly: true
+        password_nueva:
+          type: string
+          format: password
+          minLength: 12
+          writeOnly: true
+
+    Usuario:
+      type: object
+      required: [id, nombre_completo, correo, rol, activo, debe_cambiar_password, creado_en]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        nombre_completo:
+          type: string
+          maxLength: 120
+        correo:
+          type: string
+          format: email
+        rol:
+          $ref: '#/components/schemas/Rol'
+        activo:
+          type: boolean
+        debe_cambiar_password:
+          type: boolean
+        creado_en:
+          type: string
+          format: date-time
+          readOnly: true
+
+    UsuarioCrear:
+      type: object
+      required: [nombre_completo, correo, rol, password_temporal]
+      additionalProperties: false
+      properties:
+        nombre_completo:
+          type: string
+          minLength: 1
+          maxLength: 120
+        correo:
+          type: string
+          format: email
+        rol:
+          $ref: '#/components/schemas/Rol'
+        password_temporal:
+          type: string
+          format: password
+          minLength: 12
+          writeOnly: true
+
+    UsuarioActualizar:
+      type: object
+      description: Campos editables de la cuenta. Al menos uno.
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        nombre_completo:
+          type: string
+          minLength: 1
+          maxLength: 120
+        rol:
+          $ref: '#/components/schemas/Rol'
+        activo:
+          type: boolean
+    InspeccionArchivo:
+      type: object
+      required: [archivo_id, nombre, formato, src_origen, tipo_geometria, num_elementos, columnas, expira_en]
+      properties:
+        archivo_id:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+          example: catastro_madre_de_dios.zip
+        formato:
+          type: string
+          enum: [shapefile_zip, geojson]
+        src_origen:
+          type: string
+          description: Sistema de coordenadas declarado (del .prj o del GeoJSON).
+          example: EPSG:4326
+        tipo_geometria:
+          type: string
+          enum: [poligono, linea, punto, mixta]
+        num_elementos:
+          type: integer
+          minimum: 0
+        columnas:
+          type: array
+          description: Columnas del archivo disponibles para asignar.
+          items:
+            type: object
+            required: [nombre, tipo]
+            properties:
+              nombre:
+                type: string
+              tipo:
+                type: string
+                enum: [texto, entero, decimal, fecha]
+              ejemplos:
+                type: array
+                maxItems: 3
+                items:
+                  type: string
+        expira_en:
+          type: string
+          format: date-time
+          description: El archivo temporal se elimina después de esta fecha si no se usa.
+
+    AtributoDestino:
+      type: object
+      required: [nombre, obligatorio]
+      properties:
+        nombre:
+          type: string
+          description: Para el catastro minero solo `codigo`, `tipo_derecho` y `estado`; nunca titular.
+        obligatorio:
+          type: boolean
+
+    CapaReferencia:
+      type: object
+      required: [tipo, nombre, geometria_esperada, atributos_destino, version_vigente, texto_frescura]
+      properties:
+        tipo:
+          $ref: '#/components/schemas/TipoCapa'
+        nombre:
+          type: string
+          example: Catastro minero
+        geometria_esperada:
+          type: string
+          enum: [poligono, linea]
+        atributos_destino:
+          type: array
+          items:
+            $ref: '#/components/schemas/AtributoDestino'
+        version_vigente:
+          allOf:
+          - $ref: '#/components/schemas/VersionCapa'
+          nullable: true
+          description: Versión con la fecha de corte más reciente; null si nunca se cargó.
+        texto_frescura:
+          type: string
+          description: Fecha de corte vigente (dd/mm/aaaa) o "Sin datos cargados".
+          example: 15/09/2026
+
+    VersionCapa:
+      type: object
+      required: [id, tipo, fuente, fecha_corte, cargada_en, cargada_por, num_elementos, vigente]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipo:
+          $ref: '#/components/schemas/TipoCapa'
+        fuente:
+          type: string
+          example: INGEMMET
+        fecha_corte:
+          type: string
+          format: date
+        cargada_en:
+          type: string
+          format: date-time
+        cargada_por:
+          $ref: '#/components/schemas/UsuarioRef'
+        num_elementos:
+          type: integer
+        vigente:
+          type: boolean
+
+    CargaVersionCapa:
+      type: object
+      required: [archivo_id, fuente, fecha_corte, mapeo_columnas]
+      additionalProperties: false
+      properties:
+        archivo_id:
+          type: string
+          format: uuid
+        fuente:
+          type: string
+          minLength: 1
+          maxLength: 120
+        fecha_corte:
+          type: string
+          format: date
+        mapeo_columnas:
+          type: object
+          description: |
+            Atributo de destino → columna del archivo. Solo se aceptan los atributos de destino
+            del tipo de capa; cualquier otra clave (p. ej., `titular`) se rechaza con 422.
+          additionalProperties: false
+          properties:
+            codigo:
+              type: string
+            nombre:
+              type: string
+            tipo_derecho:
+              type: string
+            estado:
+              type: string
+
+    # ---------------- Alertas y trabajos ----------------
+    CargaAlertasSolicitud:
+      type: object
+      required: [archivo_id, fuente, fecha_corte, mapeo_columnas]
+      additionalProperties: false
+      properties:
+        archivo_id:
+          type: string
+          format: uuid
+        fuente:
+          type: string
+          enum: [GeoBosques]
+          description: Única fuente Must en la v1; RADD es Should (RF-19).
+        fecha_corte:
+          type: string
+          format: date
+        mapeo_columnas:
+          type: object
+          required: [codigo, fecha_deteccion]
+          additionalProperties: false
+          properties:
+            codigo:
+              type: string
+            fecha_deteccion:
+              type: string
+
+    CargaAlertas:
+      type: object
+      required: [id, fuente, fecha_corte, cargada_en, cargada_por, alertas_en_archivo, alertas_nuevas, 
+          alertas_existentes, alertas_fuera_ambito, alertas_ausentes, zonas_creadas, zonas_actualizadas, 
+          resumen]
+      properties:
+        id:
+          type: string
+          format: uuid
+        fuente:
+          type: string
+        fecha_corte:
+          type: string
+          format: date
+        cargada_en:
+          type: string
+          format: date-time
+        cargada_por:
+          $ref: '#/components/schemas/UsuarioRef'
+        alertas_en_archivo:
+          type: integer
+        alertas_nuevas:
+          type: integer
+        alertas_existentes:
+          type: integer
+        alertas_fuera_ambito:
+          type: integer
+        alertas_ausentes:
+          type: integer
+          description: Ya ingeridas que no vienen en esta carga; se marcan como no presentes, sin borrarse.
+        zonas_creadas:
+          type: integer
+        zonas_actualizadas:
+          type: integer
+        resumen:
+          type: string
+          example: 30 alertas nuevas, 150 ya existentes, 5 alertas fuera del ámbito
+
+    Alerta:
+      type: object
+      required: [id, fuente, codigo, fecha_deteccion, fecha_ingesta, presente_en_ultima_carga, zona_codigo, 
+          area_ha]
+      properties:
+        id:
+          type: string
+          format: uuid
+        fuente:
+          type: string
+          example: GeoBosques
+        codigo:
+          type: string
+        fecha_deteccion:
+          type: string
+          format: date
+        fecha_ingesta:
+          type: string
+          format: date-time
+        presente_en_ultima_carga:
+          type: boolean
+        zona_codigo:
+          $ref: '#/components/schemas/CodigoZona'
+        area_ha:
+          type: number
+          format: double
+          multipleOf: 0.01
+
+    PaginaAlertas:
+      allOf:
+      - $ref: '#/components/schemas/Pagina'
+      - type: object
+        required: [alertas]
+        properties:
+          alertas:
+            type: array
+            items:
+              $ref: '#/components/schemas/Alerta'
+
+    Trabajo:
+      type: object
+      required: [id, tipo, estado, creado_en, actualizado_en]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipo:
+          type: string
+          enum: [carga_capa, ingesta_alertas]
+        estado:
+          type: string
+          enum: [pendiente, en_proceso, completado, fallido]
+        creado_en:
+          type: string
+          format: date-time
+        actualizado_en:
+          type: string
+          format: date-time
+        mensaje_estado:
+          type: string
+          example: Agrupando alertas en zonas
+        resultado:
+          type: object
+          nullable: true
+          description: Presente cuando el estado es `completado`.
+          properties:
+            version_capa_id:
+              type: string
+              format: uuid
+            carga_alertas_id:
+              type: string
+              format: uuid
+        error:
+          allOf:
+          - $ref: '#/components/schemas/Error'
+          nullable: true
+          description: Presente cuando el estado es `fallido`; los datos previos no cambian.
+
+    # ---------------- Mapa y GeoJSON ----------------
+    CapaMapa:
+      type: object
+      required: [id, nombre, tipo_geometria, fecha_corte, texto_frescura]
+      properties:
+        id:
+          $ref: '#/components/schemas/CapaMapaId'
+        nombre:
+          type: string
+          example: Alertas de GeoBosques
+        tipo_geometria:
+          type: string
+          enum: [poligono, linea]
+        fecha_corte:
+          type: string
+          format: date
+          nullable: true
+          description: Null si nunca se cargó. Para zonas de cambio, la de las alertas.
+        texto_frescura:
+          type: string
+          description: '"dd/mm/aaaa" o "Sin datos cargados".'
+          example: 20/09/2026
+        aviso:
+          type: string
+          nullable: true
+          description: Solo para alertas, si el corte tiene más de 30 días.
+          example: Alertas de GeoBosques posiblemente desactualizadas (corte 20/08/2026)
+
+    Geometria:
+      type: object
+      description: Geometría GeoJSON (RFC 7946) en EPSG:4326.
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          enum: [Point, LineString, MultiLineString, Polygon, MultiPolygon]
+        coordinates:
+          type: array
+          items: {}
+
+    Feature:
+      type: object
+      required: [type, geometry, properties]
+      properties:
+        type:
+          type: string
+          enum: [Feature]
+        id:
+          type: string
+        geometry:
+          $ref: '#/components/schemas/Geometria'
+        properties:
+          type: object
+          description: |
+            Atributos según la capa. Catastro minero: `tipo_derecho`, `codigo`, `estado`,
+            `fecha_corte` (nunca titular). Zonas: `codigo`, `nivel`, `puntaje_vigente`, `estado`,
+            `marcas`. Alertas: `codigo`, `fecha_deteccion`, `zona_codigo`.
+          additionalProperties: true
+
+    FeatureCollection:
+      type: object
+      required: [type, features]
+      properties:
+        type:
+          type: string
+          enum: [FeatureCollection]
+        features:
+          type: array
+          items:
+            $ref: '#/components/schemas/Feature'
+
+    # ---------------- Zonas y priorización ----------------
+    Factor:
+      type: object
+      required: [factor, peso, disponible, valor_normalizado, aporte, aporte_texto, texto_explicativo]
+      additionalProperties: false
+      properties:
+        factor:
+          $ref: '#/components/schemas/TipoFactor'
+        peso:
+          type: integer
+          description: Peso de la versión de pesos usada (PS-03).
+          example: 35
+        disponible:
+          type: boolean
+        valor_normalizado:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          nullable: true
+        aporte:
+          type: number
+          format: double
+          nullable: true
+          description: Aporte en puntos sin redondear; null si no está disponible.
+        aporte_texto:
+          type: string
+          description: Un decimal para mostrar, o "No disponible".
+          example: '35.0'
+        texto_explicativo:
+          type: string
+          example: dentro de la reserva
+
+    Prioridad:
+      type: object
+      description: Puntaje calculado. Determinista para los mismos datos, versiones de capas y fecha de 
+        referencia.
+      required: [puntaje, nivel, fecha_referencia, version_pesos, calculado_en, factores, texto_desglose, 
+          fuentes]
+      additionalProperties: false
+      properties:
+        puntaje:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: Null si ningún factor está disponible.
+        nivel:
+          $ref: '#/components/schemas/NivelVigente'
+        fecha_referencia:
+          type: string
+          format: date
+          description: Fecha de referencia (FR) en America/Lima.
+        version_pesos:
+          type: integer
+          example: 1
+        calculado_en:
+          type: string
+          format: date-time
+        factores:
+          type: array
+          minItems: 5
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/Factor'
+        texto_desglose:
+          type: string
+          example: dentro de la reserva; alertas en 3 de 8 semanas; a 200 m del río Malinowski
+        fuentes:
+          type: array
+          description: Capas y fechas de corte usadas (RNF-07).
+          items:
+            $ref: '#/components/schemas/FuenteUsada'
+
+    AjusteVigente:
+      type: object
+      required: [id, forma, puntaje_ajustado]
+      properties:
+        id:
+          type: string
+          format: uuid
+        forma:
+          type: string
+          enum: [por_puntaje, por_nivel]
+        puntaje_ajustado:
+          type: integer
+          minimum: 0
+          maximum: 100
+
+    MarcaResumen:
+      type: object
+      required: [id, tipo, texto]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipo:
+          type: string
+          enum: [area_pequena, posible_dinamica_fluvial, marca_analista]
+        texto:
+          type: string
+          example: posible dinámica fluvial
+
+    ZonaResumen:
+      type: object
+      required: [codigo, estado, nivel, puntaje_vigente, puntaje_calculado, ajuste_vigente, puntaje_texto, 
+          factores, texto_desglose, marcas, area_ha, num_alertas, fecha_alerta_mas_reciente]
+      additionalProperties: false
+      properties:
+        codigo:
+          $ref: '#/components/schemas/CodigoZona'
+        estado:
+          $ref: '#/components/schemas/EstadoZona'
+        nivel:
+          $ref: '#/components/schemas/NivelVigente'
+        puntaje_vigente:
+          type: integer
+          nullable: true
+          description: El ajustado si hay ajuste vigente; si no, el calculado.
+        puntaje_calculado:
+          type: integer
+          nullable: true
+        ajuste_vigente:
+          allOf:
+          - $ref: '#/components/schemas/AjusteVigente'
+          nullable: true
+        puntaje_texto:
+          type: string
+          description: Texto listo para mostrar.
+          example: 80 (ajustado; calculado 45)
+        factores:
+          type: array
+          minItems: 5
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/Factor'
+        texto_desglose:
+          type: string
+        marcas:
+          type: array
+          items:
+            $ref: '#/components/schemas/MarcaResumen'
+        area_ha:
+          type: number
+          format: double
+          multipleOf: 0.01
+        num_alertas:
+          type: integer
+          minimum: 1
+        fecha_alerta_mas_reciente:
+          type: string
+          format: date
+
+    ConteosZonas:
+      type: object
+      required: [por_nivel, por_estado]
+      properties:
+        por_nivel:
+          type: object
+          required: [alta, media, baja, no_disponible]
+          properties:
+            alta: {type: integer, minimum: 0}
+            media: {type: integer, minimum: 0}
+            baja: {type: integer, minimum: 0}
+            no_disponible: {type: integer, minimum: 0}
+        por_estado:
+          type: object
+          required: [nueva, en_revision, requiere_verificacion, revisada, descartada]
+          properties:
+            nueva: {type: integer, minimum: 0}
+            en_revision: {type: integer, minimum: 0}
+            requiere_verificacion: {type: integer, minimum: 0}
+            revisada: {type: integer, minimum: 0}
+            descartada: {type: integer, minimum: 0}
+
+    ListaZonas:
+      allOf:
+      - $ref: '#/components/schemas/Pagina'
+      - type: object
+        required: [alertas_al, aviso_frescura, conteos, zonas, mensaje]
+        properties:
+          alertas_al:
+            type: string
+            nullable: true
+            description: '"Alertas al dd/mm/aaaa"; null si nunca se cargaron alertas.'
+            example: Alertas al 20/09/2026
+          aviso_frescura:
+            type: string
+            nullable: true
+            example: Alertas de GeoBosques posiblemente desactualizadas (corte 20/08/2026)
+          conteos:
+            $ref: '#/components/schemas/ConteosZonas'
+          zonas:
+            type: array
+            items:
+              $ref: '#/components/schemas/ZonaResumen'
+          mensaje:
+            type: string
+            nullable: true
+            description: Mensaje de sin resultados cuando ninguna zona cumple el filtro.
+            example: No hay zonas que cumplan el filtro
+
+    SuperposicionArea:
+      type: object
+      required: [capa, codigo, nombre, fecha_corte]
+      additionalProperties: false
+      properties:
+        capa:
+          type: string
+          enum: [limite_reserva, zona_amortiguamiento]
+        codigo:
+          type: string
+        nombre:
+          type: string
+        fecha_corte:
+          type: string
+          format: date
+
+    SuperposicionMinera:
+      type: object
+      description: Sin titular (RD-04).
+      required: [capa, tipo_derecho, codigo, estado, fecha_corte]
+      additionalProperties: false
+      properties:
+        capa:
+          type: string
+          enum: [catastro_minero]
+        tipo_derecho:
+          type: string
+          enum: [concesion, petitorio]
+        codigo:
+          type: string
+        estado:
+          type: string
+        fecha_corte:
+          type: string
+          format: date
+
+    Superposicion:
+      oneOf:
+      - $ref: '#/components/schemas/SuperposicionArea'
+      - $ref: '#/components/schemas/SuperposicionMinera'
+      discriminator:
+        propertyName: capa
+        mapping:
+          limite_reserva: '#/components/schemas/SuperposicionArea'
+          zona_amortiguamiento: '#/components/schemas/SuperposicionArea'
+          catastro_minero: '#/components/schemas/SuperposicionMinera'
+
+    RioCercano:
+      type: object
+      description: |
+        Si no hay capa de ríos, `disponible` es false, `mensaje` es "Información no disponible" y
+        no se incluyen `distancia_m` ni `nombre` (RF-08-AC-7).
+      required: [disponible]
+      additionalProperties: false
+      properties:
+        disponible:
+          type: boolean
+        distancia_m:
+          type: integer
+          minimum: 0
+          description: Distancia mínima en metros, EPSG:32719; 0 si la zona cruza el río.
+        nombre:
+          type: string
+          nullable: true
+          example: Malinowski
+        texto:
+          type: string
+          example: 'Río Malinowski: 212 m'
+        fecha_corte:
+          type: string
+          format: date
+        mensaje:
+          type: string
+          example: Información no disponible
+
+    ContextoTerritorial:
+      type: object
+      description: Datos espaciales, no conclusiones; sin calificaciones de legalidad ni de actividad (RD-02).
+      required: [superposiciones, mensaje_superposiciones, rio_cercano, fuentes]
+      additionalProperties: false
+      properties:
+        superposiciones:
+          type: array
+          items:
+            $ref: '#/components/schemas/Superposicion'
+        mensaje_superposiciones:
+          type: string
+          nullable: true
+          description: '"No hay superposiciones" cuando la lista está vacía.'
+        rio_cercano:
+          $ref: '#/components/schemas/RioCercano'
+        fuentes:
+          type: array
+          description: Capas usadas con su fecha de corte, p. ej. "Catastro minero, corte 15/09/2026".
+          items:
+            $ref: '#/components/schemas/FuenteUsada'
+
+    ZonaDetalle:
+      type: object
+      required: [codigo, estado, nivel, puntaje_vigente, puntaje_texto, ajuste_vigente, prioridad, contexto, 
+          marcas, area_ha, num_alertas, fecha_alerta_mas_reciente, creada_en, fecha_ultimo_cambio_estado, 
+          geometria]
+      additionalProperties: false
+      properties:
+        codigo:
+          $ref: '#/components/schemas/CodigoZona'
+        estado:
+          $ref: '#/components/schemas/EstadoZona'
+        nivel:
+          $ref: '#/components/schemas/NivelVigente'
+        puntaje_vigente:
+          type: integer
+          nullable: true
+        puntaje_texto:
+          type: string
+          example: 70 (ajustado por nivel; calculado 45)
+        ajuste_vigente:
+          allOf:
+          - $ref: '#/components/schemas/AjusteVigente'
+          nullable: true
+        prioridad:
+          $ref: '#/components/schemas/Prioridad'
+        contexto:
+          $ref: '#/components/schemas/ContextoTerritorial'
+        marcas:
+          type: array
+          description: Marcas activas.
+          items:
+            $ref: '#/components/schemas/Marca'
+        area_ha:
+          type: number
+          format: double
+          multipleOf: 0.01
+          example: 2.0
+        num_alertas:
+          type: integer
+          minimum: 1
+        fecha_alerta_mas_reciente:
+          type: string
+          format: date
+        creada_en:
+          type: string
+          format: date-time
+        fecha_ultimo_cambio_estado:
+          type: string
+          format: date-time
+          nullable: true
+        geometria:
+          $ref: '#/components/schemas/Geometria'
+
+    # ---------------- Revisión ----------------
+    CambioEstadoSolicitud:
+      type: object
+      required: [estado_nuevo]
+      additionalProperties: false
+      properties:
+        estado_nuevo:
+          $ref: '#/components/schemas/EstadoZona'
+        texto:
+          type: string
+          maxLength: 1000
+          description: Comentario o motivo; obligatorio según la transición.
+
+    AjusteSolicitud:
+      oneOf:
+      - $ref: '#/components/schemas/AjustePorPuntaje'
+      - $ref: '#/components/schemas/AjustePorNivel'
+      discriminator:
+        propertyName: forma
+        mapping:
+          por_puntaje: '#/components/schemas/AjustePorPuntaje'
+          por_nivel: '#/components/schemas/AjustePorNivel'
+
+    AjustePorPuntaje:
+      type: object
+      required: [forma, puntaje, justificacion]
+      additionalProperties: false
+      properties:
+        forma:
+          type: string
+          enum: [por_puntaje]
+        puntaje:
+          type: integer
+          minimum: 0
+          maximum: 100
+        justificacion:
+          type: string
+          minLength: 1
+          maxLength: 1000
+
+    AjustePorNivel:
+      type: object
+      required: [forma, nivel, justificacion]
+      additionalProperties: false
+      properties:
+        forma:
+          type: string
+          enum: [por_nivel]
+        nivel:
+          $ref: '#/components/schemas/NivelPrioridad'
+        justificacion:
+          type: string
+          minLength: 1
+          maxLength: 1000
+
+    AjustePrioridad:
+      type: object
+      required: [id, forma, nivel_elegido, puntaje_ajustado, puntaje_calculado_al_ajustar, justificacion, 
+          estado, creado_en, creado_por]
+      properties:
+        id:
+          type: string
+          format: uuid
+        forma:
+          type: string
+          enum: [por_puntaje, por_nivel]
+        nivel_elegido:
+          allOf:
+          - $ref: '#/components/schemas/NivelPrioridad'
+          nullable: true
+          description: Solo cuando la forma es `por_nivel`.
+        puntaje_ajustado:
+          type: integer
+          minimum: 0
+          maximum: 100
+        puntaje_calculado_al_ajustar:
+          type: integer
+          nullable: true
+        justificacion:
+          type: string
+        estado:
+          type: string
+          enum: [vigente, reemplazado, retirado]
+        creado_en:
+          type: string
+          format: date-time
+        creado_por:
+          $ref: '#/components/schemas/UsuarioRef'
+        retirado_en:
+          type: string
+          format: date-time
+          nullable: true
+        retirado_por:
+          allOf:
+          - $ref: '#/components/schemas/UsuarioRef'
+          nullable: true
+        justificacion_retiro:
+          type: string
+          nullable: true
+
+    RetiroAjusteSolicitud:
+      type: object
+      required: [estado, justificacion_retiro]
+      additionalProperties: false
+      properties:
+        estado:
+          type: string
+          enum: [retirado]
+        justificacion_retiro:
+          type: string
+          minLength: 1
+          maxLength: 1000
+
+    Marca:
+      type: object
+      required: [id, tipo, origen, texto, activa, creada_en]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipo:
+          type: string
+          description: Las automáticas solo pueden ser de los dos tipos definidos (RF-13-AC-9).
+          enum: [area_pequena, posible_dinamica_fluvial, marca_analista]
+        origen:
+          type: string
+          enum: [automatica, analista]
+        rotulo:
+          type: string
+          description: '"Marca del analista" para las del analista.'
+          example: Marca del analista
+        texto:
+          type: string
+          example: posible actividad minera
+        activa:
+          type: boolean
+        creada_en:
+          type: string
+          format: date-time
+        creada_por:
+          allOf:
+          - $ref: '#/components/schemas/UsuarioRef'
+          nullable: true
+          description: Null en las marcas automáticas.
+        retirada_en:
+          type: string
+          format: date-time
+          nullable: true
+        retirada_por:
+          allOf:
+          - $ref: '#/components/schemas/UsuarioRef'
+          nullable: true
+        motivo_retiro:
+          type: string
+          nullable: true
+
+    MarcaAnalistaSolicitud:
+      type: object
+      required: [texto]
+      additionalProperties: false
+      properties:
+        texto:
+          type: string
+          minLength: 1
+          maxLength: 500
+
+    RetiroMarcaSolicitud:
+      type: object
+      required: [activa, motivo_retiro]
+      additionalProperties: false
+      properties:
+        activa:
+          type: boolean
+          enum: [false]
+        motivo_retiro:
+          type: string
+          minLength: 1
+          maxLength: 1000
+
+    EntradaHistorial:
+      type: object
+      description: |
+        Entrada de la lista cronológica única. Los campos opcionales dependen de `tipo_accion`:
+        - `zona_creada`: `codigo_alerta_origen` (usuario "Sistema").
+        - `cambio_estado`: `estado_anterior`, `estado_nuevo`, `texto`.
+        - `ajuste_fijado` / `ajuste_retirado`: `ajuste_id`, `forma`, `nivel_elegido`,
+          `puntaje_calculado`, `puntaje_ajustado`, `texto` (justificación).
+        - `marca_registrada` / `marca_retirada`: `marca_id`, `texto_marca`, `texto` (motivo del retiro).
+      required: [id, tipo_accion, fecha_hora, autor]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipo_accion:
+          type: string
+          enum: [zona_creada, cambio_estado, ajuste_fijado, ajuste_retirado, marca_registrada, marca_retirada]
+        fecha_hora:
+          type: string
+          format: date-time
+        autor:
+          type: object
+          required: [tipo, nombre]
+          properties:
+            tipo:
+              type: string
+              enum: [usuario, sistema]
+            id:
+              type: string
+              format: uuid
+              nullable: true
+            nombre:
+              type: string
+              example: Sistema
+        codigo_alerta_origen:
+          type: string
+        estado_anterior:
+          $ref: '#/components/schemas/EstadoZona'
+        estado_nuevo:
+          $ref: '#/components/schemas/EstadoZona'
+        ajuste_id:
+          type: string
+          format: uuid
+        forma:
+          type: string
+          enum: [por_puntaje, por_nivel]
+        nivel_elegido:
+          $ref: '#/components/schemas/NivelPrioridad'
+        puntaje_calculado:
+          type: integer
+        puntaje_ajustado:
+          type: integer
+        marca_id:
+          type: string
+          format: uuid
+        texto_marca:
+          type: string
+        texto:
+          type: string
+          nullable: true
+
+    # ---------------- Análisis ----------------
+    Periodo:
+      type: object
+      required: [inicio, fin]
+      additionalProperties: false
+      properties:
+        inicio:
+          type: string
+          format: date
+        fin:
+          type: string
+          format: date
+
+    ComparacionSolicitud:
+      type: object
+      required: [periodos]
+      additionalProperties: false
+      properties:
+        periodos:
+          type: array
+          description: Dos periodos en cualquier orden; el servidor asigna A (anterior) y B (posterior).
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/Periodo'
+
+    FuenteUsada:
+      type: object
+      required: [fuente, fecha_corte]
+      properties:
+        capa:
+          type: string
+          example: Catastro minero
+        fuente:
+          type: string
+          example: INGEMMET
+        fecha_corte:
+          type: string
+          format: date
+
+    ResultadoZona:
+      type: object
+      description: Instantánea del momento del análisis; no cambia después (RF-14-AC-14).
+      required: [codigo_zona, alertas_a, alertas_b, area_a_ha, area_b_ha, diferencia_ha, presencia, nivel, 
+          puntaje, estado]
+      additionalProperties: false
+      properties:
+        codigo_zona:
+          $ref: '#/components/schemas/CodigoZona'
+        alertas_a:
+          type: integer
+          minimum: 0
+        alertas_b:
+          type: integer
+          minimum: 0
+        area_a_ha:
+          type: number
+          format: double
+          multipleOf: 0.01
+        area_b_ha:
+          type: number
+          format: double
+          multipleOf: 0.01
+        diferencia_ha:
+          type: number
+          format: double
+          multipleOf: 0.01
+          description: Área B − área A.
+        presencia:
+          type: string
+          enum: [solo_a, solo_b, en_ambos]
+        nivel:
+          $ref: '#/components/schemas/NivelVigente'
+        puntaje:
+          type: integer
+          nullable: true
+        estado:
+          $ref: '#/components/schemas/EstadoZona'
+
+    AnalisisResumen:
+      type: object
+      required: [id, ejecutado_en, ejecutado_por, periodo_a, periodo_b, estado]
+      properties:
+        id:
+          type: string
+          format: uuid
+        ejecutado_en:
+          type: string
+          format: date-time
+        ejecutado_por:
+          $ref: '#/components/schemas/UsuarioRef'
+        periodo_a:
+          $ref: '#/components/schemas/Periodo'
+        periodo_b:
+          $ref: '#/components/schemas/Periodo'
+        estado:
+          type: string
+          enum: [concluido, incompleto, sin_datos]
+
+    Analisis:
+      allOf:
+      - $ref: '#/components/schemas/AnalisisResumen'
+      - type: object
+        required: [fuentes, limitaciones, mensaje, resultados]
+        properties:
+          fuentes:
+            type: array
+            items:
+              $ref: '#/components/schemas/FuenteUsada'
+          limitaciones:
+            type: array
+            items:
+              type: string
+            example: ['Las alertas están cargadas hasta 20/08/2026; el periodo B termina después']
+          mensaje:
+            type: string
+            nullable: true
+            example: No se identificaron zonas con alertas en los periodos analizados
+          resultados:
+            type: array
+            description: Ordenados por puntaje vigente como en RF-10. Vacío si el estado es `sin_datos`.
+            items:
+              $ref: '#/components/schemas/ResultadoZona'
+
+    ListaAnalisis:
+      allOf:
+      - $ref: '#/components/schemas/Pagina'
+      - type: object
+        required: [analisis, mensaje]
+        properties:
+          analisis:
+            type: array
+            items:
+              $ref: '#/components/schemas/AnalisisResumen'
+          mensaje:
+            type: string
+            nullable: true
+            example: Aún no hay análisis almacenados
+x-consolidation-decisions:
+- id: C-01
+  tema: Nomenclatura
+  decision: Rutas en español, recursos plurales y prefijo /api/v1.
+- id: C-02
+  tema: Cierre de sesión
+  decision: POST /auth/logout; respuesta 204 sin cuerpo (v1.2.0; antes DELETE /auth/sesion).
+- id: C-03
+  tema: Cambio de contraseña
+  decision: PUT /auth/password; respuesta 204.
+- id: C-04
+  tema: Actualización de usuarios
+  decision: PATCH /usuarios/{usuarioId} parcial; sin PUT ni DELETE de cuentas.
+- id: C-05
+  tema: Archivos
+  decision: POST /archivos y referencia al archivo en las cargas; evita duplicar la subida.
+- id: C-06
+  tema: Capas de referencia
+  decision: POST /capas-referencia/{tipoCapa}/versiones; versiones explícitas.
+- id: C-07
+  tema: Ingesta
+  decision: POST /cargas-alertas devuelve 202 y se consulta el estado de procesamiento.
+- id: C-08
+  tema: Cambio de estado
+  decision: POST /zonas/{codigo}/cambios-estado crea transición histórica (201).
+- id: C-09
+  tema: Retiro de ajustes
+  decision: PATCH sobre ajuste; retiro justificado sin borrado físico y con historial.
+- id: C-10
+  tema: Retiro de marcas
+  decision: PATCH sobre marca; retiro justificado sin borrado físico y con historial.
+- id: C-11
+  tema: Comparación de periodos
+  decision: POST /analisis devuelve 201 con resultado inmutable.
+- id: C-12
+  tema: Exportación
+  decision: GET /exportaciones/zonas con formato CSV o GeoJSON documentado.

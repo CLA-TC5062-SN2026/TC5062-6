@@ -1,7 +1,8 @@
 """Pruebas de integridad del esquema PostgreSQL/PostGIS (22 tablas) y de las restricciones criticas."""
 import pytest
 
-from conftest import ejecutar_script, leer_sql
+from tests.base_pruebas import ejecutar_script
+from tests.conftest import leer_sql
 
 TABLAS = {
     'usuarios', 'sesiones', 'archivos_temporales', 'capas_referencia', 'versiones_capa', 'elementos_capa',

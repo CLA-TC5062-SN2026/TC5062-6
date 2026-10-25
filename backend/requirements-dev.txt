@@ -1,0 +1,2 @@
+# Alias para las instrucciones de S05_S06_A2: las dependencias de pruebas de ambas actividades están en requirements-test.txt.
+-r requirements-test.txt

@@ -8,6 +8,24 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, 
 CODIGO_ZONA = r'^EA-[0-9]{4}-[0-9]{3}$'
 Rol = Literal['analista_sig', 'coordinacion']
 NombreCompleto = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+# PS-15 / RNF-03: mínimo 12 caracteres. El máximo acota el costo de hashear entradas enormes.
+MIN_PASSWORD = 12
+MAX_PASSWORD = 128
+MAX_PASSWORD_ENTRADA = 1024
+PasswordNueva = Annotated[str, Field(min_length=MIN_PASSWORD, max_length=MAX_PASSWORD)]
+PasswordIngresada = Annotated[str, Field(min_length=1, max_length=MAX_PASSWORD_ENTRADA)]
+
+
+class CredencialesLogin(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    correo: EmailStr
+    password: PasswordIngresada
+
+
+class CambioPassword(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    password_actual: PasswordIngresada
+    password_nueva: PasswordNueva
 
 
 class UsuarioCrear(BaseModel):
@@ -15,7 +33,7 @@ class UsuarioCrear(BaseModel):
     nombre_completo: NombreCompleto
     correo: EmailStr
     rol: Rol
-    password_temporal: str = Field(min_length=12)
+    password_temporal: PasswordNueva
 
 
 class UsuarioActualizar(BaseModel):
@@ -53,6 +71,19 @@ class Usuario(UsuarioRef):
     activo: bool
     debe_cambiar_password: bool
     creado_en: datetime
+
+
+class SesionCreada(BaseModel):
+    access_token: str
+    token_type: Literal['bearer']
+    expires_in: int
+    inactividad_max_segundos: int
+    usuario: Usuario
+
+
+class SesionActual(BaseModel):
+    usuario: Usuario
+    ultima_actividad: datetime
 
 
 class Alerta(BaseModel):

@@ -12,13 +12,23 @@ from psycopg_pool import ConnectionPool
 
 from .errors import ApiError
 
-DB_URL = os.getenv('DATABASE_URL', 'postgresql://ecoalert@localhost:5432/ecoalert')
-pool = ConnectionPool(DB_URL, min_size=1, max_size=5, open=False, kwargs={'row_factory': dict_row})
+pool: ConnectionPool | None = None
 
 # Sin valor por defecto: el secreto nunca debe estar en el código ni en Git.
 IDEMPOTENCY_SECRET = os.environ.get('IDEMPOTENCY_SECRET')
 if not IDEMPOTENCY_SECRET:
     raise RuntimeError('Falta la variable de entorno IDEMPOTENCY_SECRET (ver backend/.env.example).')
+
+
+def abrir(url: str) -> None:
+    global pool
+    pool = ConnectionPool(url, min_size=1, max_size=5, open=False, kwargs={'row_factory': dict_row})
+    pool.open(wait=True)
+
+
+def cerrar() -> None:
+    if pool is not None:
+        pool.close()
 
 
 @contextmanager

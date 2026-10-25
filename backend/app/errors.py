@@ -1,4 +1,5 @@
 """Errores del contrato: application/problem+json (RFC 9457) con `codigo` y `mensaje` obligatorios."""
+import logging
 from http import HTTPStatus
 
 from fastapi import FastAPI, Request
@@ -6,15 +7,23 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+logger = logging.getLogger(__name__)
+
 
 class ApiError(Exception):
-    def __init__(self, status: int, codigo: str, mensaje: str):
+    def __init__(self, status: int, codigo: str, mensaje: str, headers: dict | None = None):
         super().__init__(mensaje)
-        self.status, self.codigo, self.mensaje = status, codigo, mensaje
+        self.status, self.codigo, self.mensaje, self.headers = status, codigo, mensaje, headers
 
 
 def no_encontrado(mensaje: str) -> ApiError:
     return ApiError(404, 'NO_ENCONTRADO', mensaje)
+
+
+def encontrado(fila, mensaje: str):
+    if not fila:
+        raise no_encontrado(mensaje)
+    return fila
 
 
 def problema(status: int, codigo: str, mensaje: str, detalles=None, headers=None) -> JSONResponse:
@@ -52,7 +61,7 @@ def _mensaje(error: dict) -> str:
 def registrar_errores(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def api_error(request: Request, exc: ApiError):
-        return problema(exc.status, exc.codigo, exc.mensaje)
+        return problema(exc.status, exc.codigo, exc.mensaje, headers=exc.headers)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException):
@@ -74,4 +83,6 @@ def registrar_errores(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, exc: Exception):
+        # El detalle va al log del servidor, nunca al cliente.
+        logger.exception('Error no controlado en %s %s', request.method, request.url.path)
         return problema(500, 'ERROR_INTERNO', 'Ocurrió un error inesperado. Intenta de nuevo más tarde.')

@@ -1,0 +1,2 @@
+# Los scripts se ejecutan dentro de contenedores Linux: en Windows, CRLF los rompería (/bin/bash^M).
+*.sh text eol=lf

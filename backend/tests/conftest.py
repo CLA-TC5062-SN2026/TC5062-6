@@ -1,16 +1,15 @@
-"""Fixtures de las pruebas: base aislada `*_test`, API levantada por pytest, cliente HTTP y validacion OpenAPI.
+"""Fixtures de las pruebas de A1 (con la autenticación JWT de A2): base `ecoalert_test` sembrada, API levantada
+por pytest, sesiones autenticadas y validacion OpenAPI.
 
-Configuracion (variables de entorno o backend/.env; ver backend/README.md):
+Configuracion (variables de entorno o backend/.env; ver backend/README.md y tests/base_pruebas.py):
   DATABASE_URL       conexion del servidor PostgreSQL (se reutilizan usuario, clave y host).
-  TEST_DB_NAME       base de pruebas (por defecto ecoalert_test). Debe terminar en _test.
+  TEST_DB_NAME       base de pruebas de A1 (por defecto ecoalert_test). Debe terminar en _test.
   TEST_DATABASE_URL  alternativa: URL completa de la base de pruebas (tambien debe terminar en _test).
   API_BASE_URL       opcional: usar una API ya levantada (debe apuntar a la base de pruebas; se verifica).
 """
 import copy
 import json
 import os
-import re
-import secrets
 import socket
 import subprocess
 import sys
@@ -20,26 +19,25 @@ import urllib.request
 import uuid
 from collections import namedtuple
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
 
 import psycopg
 import pytest
 import yaml
-from dotenv import load_dotenv
 from openapi_schema_validator import OAS30Validator
 
-BACKEND = Path(__file__).resolve().parents[1]
-REPO = BACKEND.parent
-DISENO = REPO / 'S05_S06_A1'
-ESQUEMA = DISENO / 'esquema_bd.sql'
-OPENAPI = DISENO / 'openapi_equipo.yaml'
-CLASES = DISENO / 'diagrama_clases_equipo.puml'
+from tests.base_pruebas import BACKEND, REPO, asegurar_base, entorno_de_pruebas, url_de_pruebas
+
+entorno_de_pruebas()
+
+from app.security import hashear  # noqa: E402
+
+OPENAPI = REPO / 'S05_S06_integracion' / 'openapi_integrado.yaml'
+OPENAPI_A1 = REPO / 'S05_S06_A1' / 'openapi_equipo.yaml'
+OPENAPI_A2 = REPO / 'S05_S06_A2' / 'openapi_equipo.yaml'
+CLASES = REPO / 'S05_S06_A2' / 'diagrama_clases_equipo.puml'
 SRS = REPO / 'S03_A1' / 'SRS_equipo.md'
 SQL = Path(__file__).parent / 'sql'
-
-load_dotenv(BACKEND / '.env')  # no sobrescribe variables ya definidas en el entorno
-# Si el entorno no define el secreto de idempotencia, se usa uno efimero (solo en memoria).
-os.environ.setdefault('IDEMPOTENCY_SECRET', secrets.token_hex(32))
+PASSWORD = 'clave-de-prueba-2026'
 
 Respuesta = namedtuple('Respuesta', 'estado cabeceras json')
 
@@ -48,40 +46,11 @@ def leer_sql(nombre):
     return (SQL / nombre).read_text(encoding='utf-8')
 
 
-def ejecutar_script(url, texto):
-    """Ejecuta un script de varias sentencias y devuelve las filas del ultimo SELECT."""
-    with psycopg.connect(url, autocommit=True) as conexion:
-        cursor = conexion.cursor()
-        cursor.execute(texto)
-        filas = []
-        while True:
-            if cursor.description:
-                filas = cursor.fetchall()
-            if not cursor.nextset():
-                break
-    return filas
-
-
 @pytest.fixture(scope='session')
 def url_bd():
-    """URL de la base de pruebas; la crea, importa el esquema y carga la semilla si hace falta."""
-    url = os.environ.get('TEST_DATABASE_URL')
-    if not url:
-        base = os.environ.get('DATABASE_URL')
-        if not base:
-            pytest.exit('Define DATABASE_URL (copia backend/.env.example a backend/.env) o TEST_DATABASE_URL.', returncode=2)
-        url = urlunsplit(urlsplit(base)._replace(path='/' + os.environ.get('TEST_DB_NAME', 'ecoalert_test')))
-    partes = urlsplit(url)
-    nombre = partes.path.lstrip('/')
-    if not re.fullmatch(r'[a-z][a-z0-9_]*_test', nombre):
-        pytest.exit(f'La base de pruebas debe llamarse *_test (minusculas); no se usara "{nombre}".', returncode=2)
-    with psycopg.connect(urlunsplit(partes._replace(path='/postgres')), autocommit=True) as admin:
-        if not admin.execute('SELECT 1 FROM pg_database WHERE datname = %s', (nombre,)).fetchone():
-            admin.execute(f'CREATE DATABASE {nombre}')  # nombre validado con la expresion regular anterior
-    with psycopg.connect(url, autocommit=True) as conexion:
-        if conexion.execute("SELECT to_regclass('public.usuarios')").fetchone()[0] is None:
-            conexion.execute(ESQUEMA.read_text(encoding='utf-8'))
-        conexion.execute(leer_sql('semilla.sql'))
+    """URL de la base de pruebas de A1; la crea, importa el esquema y carga la semilla si hace falta."""
+    url = url_de_pruebas('ecoalert_test', 'TEST_DB_NAME', 'TEST_DATABASE_URL')
+    asegurar_base(url, SQL / 'semilla.sql')
     return url
 
 
@@ -113,15 +82,37 @@ class Cliente:
         return Respuesta(estado, encabezados, json.loads(texto) if texto else None)
 
 
+class Sesion:
+    """Cliente HTTP autenticado: añade el token Bearer y expone la cuenta (id, correo, rol)."""
+
+    def __init__(self, cliente, token, usuario):
+        self.cliente, self.token, self.usuario = cliente, token, usuario
+
+    def __call__(self, metodo, ruta, cuerpo=None, cabeceras=None, crudo=None):
+        return self.cliente(metodo, ruta, cuerpo, {'Authorization': f'Bearer {self.token}', **(cabeceras or {})}, crudo)
+
+    @property
+    def id(self):
+        return self.usuario['id']
+
+
 def _puerto_libre():
     with socket.socket() as s:
         s.bind(('127.0.0.1', 0))
         return s.getsockname()[1]
 
 
+def _insertar_cuenta(bd, rol='coordinacion', *, activo=True, debe_cambiar=False, password=PASSWORD, hash_=None):
+    correo = f'{rol}.{uuid.uuid4().hex[:10]}@ecoalert.pe'
+    bd('INSERT INTO usuarios (nombre_completo, correo, rol, activo, debe_cambiar_password, password_hash) '
+       'VALUES (%s, %s, %s, %s, %s, %s)', (f'Prueba {rol}', correo, rol, activo, debe_cambiar,
+                                           hashear(password) if hash_ is None else hash_))
+    return correo
+
+
 @pytest.fixture(scope='session')
-def api(url_bd, bd, tmp_path_factory):
-    """Cliente HTTP de la API. Levanta uvicorn contra la base de pruebas salvo que se defina API_BASE_URL."""
+def api_base(url_bd, bd, tmp_path_factory):
+    """Cliente HTTP sin credenciales. Levanta uvicorn contra la base de pruebas salvo que se defina API_BASE_URL."""
     externa = os.environ.get('API_BASE_URL')
     proceso = None
     if externa:
@@ -145,7 +136,12 @@ def api(url_bd, bd, tmp_path_factory):
     else:
         pytest.exit('La API no respondio en /salud.', returncode=2)
     # Proteccion: la API debe leer la base de pruebas (el total de alertas visibles coincide con la base).
-    visibles_api = cliente('GET', '/api/v1/alertas?limite=1').json['total']
+    correo = _insertar_cuenta(bd)
+    acceso = cliente('POST', '/api/v1/auth/login', {'correo': correo, 'password': PASSWORD})
+    if acceso.estado != 200:
+        pytest.exit('El login de la API fallo con una cuenta de prueba; se cancelan las pruebas.', returncode=2)
+    visibles_api = cliente('GET', '/api/v1/alertas?limite=1',
+                           cabeceras={'Authorization': f"Bearer {acceso.json['access_token']}"}).json['total']
     visibles_bd = bd('SELECT count(*) FROM alertas WHERE zona_codigo IS NOT NULL AND area_ha IS NOT NULL')[0][0]
     if visibles_bd == 0 or visibles_api != visibles_bd:
         pytest.exit('La API no apunta a la base de pruebas (alertas visibles distintas); se cancelan las pruebas de escritura.', returncode=2)
@@ -153,6 +149,39 @@ def api(url_bd, bd, tmp_path_factory):
     if proceso is not None:
         proceso.terminate()
         proceso.wait(timeout=15)
+
+
+@pytest.fixture
+def nueva_cuenta(bd):
+    """nueva_cuenta(rol, activo=, debe_cambiar=, password=, hash_=) -> correo de una cuenta con contraseña conocida."""
+    return lambda rol='coordinacion', **opciones: _insertar_cuenta(bd, rol, **opciones)
+
+
+@pytest.fixture
+def iniciar_sesion(api_base):
+    """iniciar_sesion(correo, password=) -> Sesion autenticada por el login real de la API."""
+    def iniciar(correo, password=PASSWORD):
+        r = api_base('POST', '/api/v1/auth/login', {'correo': correo, 'password': password})
+        assert r.estado == 200, r.json
+        return Sesion(api_base, r.json['access_token'], r.json['usuario'])
+    return iniciar
+
+
+@pytest.fixture
+def abrir_sesion(nueva_cuenta, iniciar_sesion):
+    """abrir_sesion(rol) -> Sesion de una cuenta nueva con ese rol (contraseña ya definitiva)."""
+    return lambda rol='coordinacion': iniciar_sesion(nueva_cuenta(rol))
+
+
+@pytest.fixture
+def api(abrir_sesion):
+    """Sesión de una cuenta de Coordinación nueva: autoriza todas las operaciones implementadas."""
+    return abrir_sesion('coordinacion')
+
+
+@pytest.fixture
+def api_analista(abrir_sesion):
+    return abrir_sesion('analista_sig')
 
 
 @pytest.fixture(scope='session')
@@ -185,7 +214,7 @@ def conforme(oas):
 
 @pytest.fixture
 def crear_usuario(api):
-    """crear_usuario(**cambios) -> (respuesta, cuerpo enviado). Correo unico por llamada."""
+    """crear_usuario(**cambios) -> (respuesta, cuerpo enviado). Correo unico por llamada; lo crea la sesión `api`."""
     def crear(clave=None, **cambios):
         cuerpo = {'nombre_completo': 'Usuario de Prueba', 'correo': f'p.{uuid.uuid4().hex[:12]}@ecoalert.pe',
                   'rol': 'analista_sig', 'password_temporal': 'Temporal-2026'}

@@ -1,34 +1,24 @@
-# EcoAlert Tambopata — CRUD inicial (FastAPI + PostgreSQL/PostGIS)
+# EcoAlert Tambopata — Backend integrado (FastAPI + PostgreSQL/PostGIS)
 
-## Alcance real
-Implementa **15 operaciones de lectura y escritura iniciales** con las mismas rutas y códigos de éxito definidos en `openapi_equipo.yaml` (v1.2.0): creación, listado, consulta, reemplazo (`PUT`) y actualización parcial (`PATCH`) de usuarios; consulta de alertas, cargas, marcas, ajustes, historial y trabajos. Las entidades geoespaciales, historiales y comparaciones **no tienen DELETE** en el contrato del equipo; no se inventan endpoints destructivos.
+Backend único que une los servicios CRUD de **S05-S06-A1** (paginación, idempotencia, PUT/PATCH, validaciones y pruebas) con la
+autenticación y seguridad de **S05-S06-A2** (JWT, sesiones, roles y protección de rutas). El contrato es
+`S05_S06_integracion/openapi_integrado.yaml` (v1.3.0); la relación con los contratos originales de A1 y A2, que se conservan sin
+cambios, está en `S05_S06_integracion/integracion.md`. Las decisiones de seguridad están en `S05_S06_A2/revision_seguridad.md`.
 
-**Importante:** esta entrega es una **base de servicios CRUD, no una implementación completa de las 38 operaciones OpenAPI**. Las operaciones de autenticación, ingesta de archivos, procesamiento asíncrono, construcción de respuestas espaciales completas, cálculo de prioridad, cambios de estado, creación/retiro de ajustes y marcas, comparación y exportación quedan pendientes. No deben simularse como implementadas. Tampoco se habilitan operaciones que requieran `creado_por` o `autor_id` sin autenticación real. Los endpoints existentes **aún no tienen control de acceso** y no deben exponerse fuera de un entorno local de desarrollo.
+## Alcance
+Implementa **20 de las 39 operaciones** del contrato integrado:
 
-### Inicio local (PowerShell)
+- **Autenticación (A2):** `POST /auth/login`, `POST /auth/register` (solo Coordinación), `GET /auth/me`, `POST /auth/logout` y `PUT /auth/password`.
+- **Usuarios (A1):** listar, crear (idempotente), consultar, reemplazar (`PUT`) y actualizar parcialmente (`PATCH`).
+- **Consultas (A1):** alertas (paginadas, con filtros), cargas, marcas, ajustes, historial y trabajos.
+- **Pendiente según el contrato:** ingesta de archivos, procesamiento asíncrono, zonas y mapa, prioridad, cambios de estado, creación y retiro de ajustes y marcas, comparación de periodos y exportación. No se simulan como implementadas.
 
-Requisitos: Windows, Python 3.13 (`py -3.13 --version`) y Docker Desktop iniciado. El SRS indica Python 3.12 para el despliegue; en desarrollo local se usa 3.13, compatible con `requirements.txt`. Los pasos 1 y 2 se ejecutan desde la raíz del repositorio.
+Las cuentas, zonas y análisis **no tienen DELETE** por diseño (RF-02-AC-7, RF-12-AC-17, RF-15-AC-3): responden 405.
+**Toda la API de `/api/v1` exige JWT**, salvo `POST /auth/login`; los clientes que no enviaban `Authorization` (p. ej. las colecciones Postman originales de A1) reciben 401.
 
-1. **PostgreSQL 17 + PostGIS 3.5** (credenciales iguales a las de `.env.example`):
+## Puesta en marcha (PowerShell)
 
-```powershell
-docker run -d --name ecoalert_db `
-  -e POSTGRES_USER=ecoalert -e POSTGRES_PASSWORD=ecoalert_dev -e POSTGRES_DB=ecoalert `
-  -p 5432:5432 -v ecoalert_pgdata:/var/lib/postgresql/data `
-  postgis/postgis:17-3.5
-docker exec ecoalert_db pg_isready -U ecoalert -d ecoalert
-```
-
-   Si el contenedor ya existe, iniciarlo con `docker start ecoalert_db`.
-
-2. **Importar el esquema** en una base vacía. El script no es idempotente y se detiene en el primer error:
-
-```powershell
-docker cp .\S05_S06_A1\esquema_bd.sql ecoalert_db:/tmp/esquema_bd.sql
-docker exec ecoalert_db psql -U ecoalert -d ecoalert -v ON_ERROR_STOP=1 -f /tmp/esquema_bd.sql
-```
-
-3. **Entorno virtual, dependencias y servidor** (desde `backend`):
+Requisitos: Python 3.13 (el SRS indica 3.12 para el despliegue) y Docker Desktop iniciado. Todos los comandos, desde `backend`.
 
 ```powershell
 cd .\backend
@@ -36,105 +26,147 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
-[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
 ```
 
-   El último comando imprime un secreto aleatorio: copiarlo como valor de `IDEMPOTENCY_SECRET` en `.env`. Es obligatorio (la API no arranca sin él) y no debe subirse a Git. Luego iniciar el servidor:
+1. **Secretos en `.env`** (la API no arranca con valores de plantilla ni sin ellos). Genera dos valores distintos y pégalos en `JWT_SECRET` e `IDEMPOTENCY_SECRET`:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+2. **Base de datos** PostgreSQL 17 + PostGIS 3.5 con `S05_S06_A1/esquema_bd.sql` importado (crea también las bases de pruebas):
+
+```powershell
+docker compose --env-file .env up -d
+docker compose ps   # espera (healthy)
+```
+
+   Si ya tienes el contenedor `ecoalert_db` (creado con `docker run`), inícialo con `docker start ecoalert_db` y omite este paso; el esquema se importa con `docker cp ..\S05_S06_A1\esquema_bd.sql ecoalert_db:/tmp/e.sql` y `docker exec ecoalert_db psql -U ecoalert -d ecoalert -v ON_ERROR_STOP=1 -f /tmp/e.sql`.
+
+3. **Primera cuenta de Coordinación** (pide la contraseña sin eco; mínimo 12 caracteres). Solo funciona si aún no existe ninguna:
+
+```powershell
+python -m app.cli crear-coordinacion --nombre "Coordinación Demo" --correo coordinacion@ecoalert.pe
+```
+
+4. **Servidor** (`--env-file` carga `.env`, incluido `IDEMPOTENCY_SECRET`):
 
 ```powershell
 python -m uvicorn app.main:app --reload --env-file .env
 ```
 
-   Si PowerShell bloquea la activación del entorno: `Set-ExecutionPolicy -Scope Process Bypass`.
+5. **Verificar**: `Invoke-RestMethod http://127.0.0.1:8000/salud` → `estado: ok`. `GET /api/v1/usuarios` sin token responde 401. Con `API_DOCS=true` hay documentación interactiva en `/docs` (con el botón *Authorize* para pegar el JWT que entrega `POST /api/v1/auth/login`).
 
-4. **Verificar**: `Invoke-RestMethod http://127.0.0.1:8000/salud` debe devolver `estado: ok` y `base_datos: True`. Documentación interactiva en http://127.0.0.1:8000/docs. Las operaciones del contrato se sirven bajo `/api/v1` (p. ej. `GET http://127.0.0.1:8000/api/v1/usuarios`); `/salud` es un endpoint operativo fuera del contrato y del prefijo.
+Si PowerShell bloquea la activación del entorno: `Set-ExecutionPolicy -Scope Process Bypass`. `.env` está en `.gitignore`; no subirlo.
 
-El archivo `.env.example` contiene valores **solo de desarrollo local** y un marcador en `IDEMPOTENCY_SECRET`. `.env` está en `.gitignore`; no subirlo al repositorio.
+## Variables de entorno
 
-### Trazabilidad
+| Variable | Obligatoria | Descripción |
+|---|---|---|
+| `DATABASE_URL` | Sí | Conexión a PostgreSQL. |
+| `JWT_SECRET` | Sí | Secreto HS256, mínimo 32 bytes aleatorios. |
+| `JWT_EXPIRATION` | Sí | Vida máxima del token en segundos (1 a 86400). |
+| `IDEMPOTENCY_SECRET` | Sí | Secreto del HMAC-SHA256 de la huella de `Idempotency-Key`; debe estar en el entorno del proceso (`--env-file`). |
+| `JWT_ISSUER`, `JWT_AUDIENCE` | No | Claims `iss` y `aud` (por defecto `ecoalert-api`, `ecoalert-spa`). |
+| `SESION_INACTIVIDAD_SEGUNDOS` | No | Expiración por inactividad; por defecto 1800 (PS-12). |
+| `API_DOCS` | No | Expone `/docs` y `/openapi.json`; por defecto `false`. |
+| `POSTGRES_*` | Para Docker | Credenciales del contenedor de base de datos (solo desarrollo). |
 
-| Método | Ruta | Operación | Estado |
+## Autenticación, roles y contraseñas
+
+| Método | Ruta (`/api/v1`) | Acceso |
+|---|---|---|
+| POST | `/auth/login` | Público |
+| POST | `/auth/register` | Coordinación (alias de `POST /usuarios`; `Idempotency-Key` obligatoria) |
+| GET | `/auth/me` · POST `/auth/logout` · PUT `/auth/password` | Cualquier usuario autenticado |
+| GET, POST | `/usuarios` · GET, PUT, PATCH `/usuarios/{usuarioId}` | Coordinación |
+| GET | `/alertas`, `/cargas-alertas[/{id}]`, `/trabajos/{id}`, `/zonas/{codigo}/{marcas,ajustes,historial}[/{id}]` | Analista SIG y Coordinación |
+
+- **401** sin token, con token inválido o expirado, o con la sesión cerrada, inactiva o de una cuenta desactivada. **403** `ROL_NO_PERMITIDO` si el rol no tiene acceso; **403** `CAMBIO_PASSWORD_REQUERIDO` mientras la contraseña sea temporal (solo `me`, `logout` y `password` quedan abiertos).
+- El rol y el estado de la cuenta se leen de la base en cada petición: desactivar una cuenta (con `PUT` o `PATCH`) o cambiar su rol surte efecto al instante, y al desactivar se revocan sus sesiones.
+- **Contraseñas:** las cuentas nuevas se guardan con **Argon2id** (como en A1). El login verifica Argon2id y bcrypt (hashes heredados de A2); un hash bcrypt válido se migra a Argon2id al iniciar sesión. Una contraseña nueva tiene de 12 a 128 caracteres; en el login se aceptan hasta 1024. Un hash ausente, ilegible o incompatible nunca lanza error 500: se responde el mismo 401 genérico que para una contraseña incorrecta.
+- `POST /usuarios` y `POST /auth/register` exigen `Idempotency-Key` (UUID) y comparten la misma lógica: durante 24 h, repetir la clave con el mismo cuerpo devuelve la respuesta original y con cualquier cambio (incluida la contraseña temporal) responde `422 IDEMPOTENCIA_CONFLICTO`. La huella es un HMAC-SHA256 del JSON canónico del cuerpo completo; solo se almacenan respuestas 2xx.
+- `PUT` y `PATCH` de usuarios comparten una función transaccional (regla de la última coordinación también al quitar el rol, cierre de sesiones al desactivar, correo inmutable). `PATCH` exige `application/merge-patch+json` (415 si no). `PUT` se añadió al contrato como propuesta adoptada para cumplir la actividad, sin aprobación formal de todos los integrantes (`S05_S06_A1/diferencias_diseno.md`, API-13).
+- `GET /salud` (fuera de `/api/v1`) es público y solo informa si la base responde.
+
+### Trazabilidad con el contrato integrado
+
+| Método | Ruta | Operación | Origen |
 |---|---|---|---|
-| GET | `/api/v1/usuarios` | listarUsuarios | Implementado |
-| POST | `/api/v1/usuarios` | crearUsuario | Implementado (`Location`, `Idempotency-Key`) |
-| GET | `/api/v1/usuarios/{usuarioId}` | obtenerUsuario | Implementado |
-| PUT | `/api/v1/usuarios/{usuarioId}` | reemplazarUsuario | Implementado (`nombre_completo`, `rol` y `activo` obligatorios; mismas reglas y transacción que PATCH) |
-| PATCH | `/api/v1/usuarios/{usuarioId}` | actualizarUsuario | Implementado (merge-patch, regla de última coordinación) |
-| GET | `/api/v1/alertas` | listarAlertas | Implementado (paginado; filtros `zona` y `presente_en_ultima_carga`) |
-| GET | `/api/v1/cargas-alertas` | listarCargasAlertas | Implementado |
-| GET | `/api/v1/cargas-alertas/{cargaId}` | obtenerCargaAlertas | Implementado |
-| GET | `/api/v1/zonas/{codigo}/marcas` | listarMarcasZona | Implementado |
-| GET | `/api/v1/zonas/{codigo}/marcas/{marcaId}` | obtenerMarca | Implementado |
-| GET | `/api/v1/zonas/{codigo}/ajustes` | listarAjustesZona | Implementado |
-| GET | `/api/v1/zonas/{codigo}/ajustes/{ajusteId}` | obtenerAjuste | Implementado |
-| GET | `/api/v1/zonas/{codigo}/historial` | obtenerHistorialZona | Implementado |
-| GET | `/api/v1/zonas/{codigo}/historial/{entradaId}` | obtenerEntradaHistorial | Implementado |
-| GET | `/api/v1/trabajos/{trabajoId}` | obtenerTrabajo | Implementado |
-| Resto | Según OpenAPI | Seguridad, zonas, capas, ingesta, prioridad, análisis, exportación | Pendiente |
+| POST | `/api/v1/auth/login` | iniciarSesion | A2 |
+| POST | `/api/v1/auth/register` | registrarUsuario | A2 (+ `Idempotency-Key` de A1) |
+| GET | `/api/v1/auth/me` | obtenerSesionActual | A2 |
+| POST | `/api/v1/auth/logout` | cerrarSesion | A2 |
+| PUT | `/api/v1/auth/password` | cambiarPassword | A2 |
+| GET, POST | `/api/v1/usuarios` | listarUsuarios, crearUsuario | A1 |
+| GET, PUT, PATCH | `/api/v1/usuarios/{usuarioId}` | obtenerUsuario, reemplazarUsuario, actualizarUsuario | A1 |
+| GET | `/api/v1/alertas` | listarAlertas (paginado; filtros `zona` y `presente_en_ultima_carga`) | A1 |
+| GET | `/api/v1/cargas-alertas[/{cargaId}]` | listarCargasAlertas, obtenerCargaAlertas | A1 |
+| GET | `/api/v1/zonas/{codigo}/marcas[/{marcaId}]` | listarMarcasZona, obtenerMarca | A1 |
+| GET | `/api/v1/zonas/{codigo}/ajustes[/{ajusteId}]` | listarAjustesZona, obtenerAjuste | A1 |
+| GET | `/api/v1/zonas/{codigo}/historial[/{entradaId}]` | obtenerHistorialZona, obtenerEntradaHistorial | A1 |
+| GET | `/api/v1/trabajos/{trabajoId}` | obtenerTrabajo | A1 |
 
-**Fidelidad al contrato:** las 15 operaciones se verifican contra los schemas de `openapi_equipo.yaml` con datos reales en PostgreSQL (ver *Pruebas automatizadas*). La cobertura sigue siendo parcial: 15 de 38 operaciones.
+## Estructura
 
-### Diseño
-- Módulos de `app/`: `main.py` (rutas), `schemas.py` (modelos de solicitud y respuesta alineados con los schemas del OpenAPI), `errors.py` (errores del contrato) y `db.py` (pool, transacciones, SQL parametrizado e idempotencia).
-- Respuestas: `201` con `Location` al crear; `200` en lecturas y actualizaciones; `400` para JSON ilegible o parámetros inválidos; `404` si falta el recurso; `409` por correo duplicado o última cuenta de coordinación; `415` si el `PATCH` no usa `application/merge-patch+json`; `422` si el cuerpo incumple el esquema. Los errores son `application/problem+json` con `codigo` y `mensaje` en español.
-- `PUT` y `PATCH` de usuarios comparten la misma función transaccional: bloquean las cuentas de coordinación activas, aplican la regla de la última coordinación (también al quitar el rol), cierran las sesiones al desactivar y no permiten cambiar el correo. `PUT` exige los tres campos editables; `PATCH` acepta un subconjunto. `PUT` se añadió en la versión 1.2.0 del contrato como propuesta adoptada para cumplir la actividad, sin aprobación formal de todos los integrantes (`diferencias_diseno.md`, API-13).
-- `POST /usuarios` exige `Idempotency-Key` (UUID). Durante 24 h, repetir la clave con el mismo cuerpo devuelve la respuesta original y con cualquier cambio del cuerpo (incluida la contraseña temporal) responde `422 IDEMPOTENCIA_CONFLICTO`. La huella es un **HMAC-SHA256 del JSON canónico del cuerpo completo** con el secreto `IDEMPOTENCY_SECRET` (variable de entorno, fuera de Git); en `claves_idempotencia` no se guarda ninguna contraseña ni hash simple de ella. Solo se almacenan respuestas 2xx y cada clave se serializa con un bloqueo asesor.
-- La contraseña temporal (mínimo 12 caracteres) se guarda como hash Argon2; nunca se devuelve.
-- No existe DELETE físico de usuarios o zonas: el SRS define desactivación, retiro o historial.
-
-### Pruebas automatizadas (pytest)
-Las pruebas viven en `backend/tests/` y **nunca tocan la base `ecoalert`**: usan una base aparte cuyo nombre debe terminar en `_test` (por defecto `ecoalert_test`; si no existe se crea, se importa `S05_S06_A1/esquema_bd.sql` y se carga la semilla controlada `tests/sql/semilla.sql`). La API se levanta sola en un puerto libre contra esa base. Requisitos: PostgreSQL/PostGIS en marcha (paso 1) y `backend/.env` creado (paso 3).
-
-Desde VS Code:
-1. Abrir la carpeta del repositorio (*File > Open Folder*) y un terminal integrado (<kbd>Ctrl</kbd>+<kbd>`</kbd>).
-2. Seleccionar el intérprete: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> > *Python: Select Interpreter* > `backend\.venv\Scripts\python.exe`.
-3. Instalar las dependencias de pruebas (solo de pruebas, además de las de ejecución) y ejecutar:
-
-```powershell
-cd .\backend
-python -m pip install -r requirements-test.txt
-python -m pytest
+```
+app/
+  main.py           Fábrica de la app: routers, denegación por defecto, cabeceras de seguridad
+  config.py         Variables de entorno validadas al arrancar (A2)
+  security.py       Hash (Argon2id; verifica bcrypt heredado) y JWT (A2)
+  dependencies.py   Autenticación (autenticar) y autorización por rol (RequiereRol) (A2)
+  errors.py         Errores RFC 9457 (application/problem+json), con 400/422 del contrato (A1)
+  db.py             Pool, transacciones, SQL parametrizado e idempotencia HMAC (A1)
+  schemas.py        Modelos de solicitud y respuesta alineados con el contrato
+  routers/          auth (A2), usuarios y consultas (A1)
+  cli.py            Creación de la primera cuenta de Coordinación (A2)
+tests/              Suite de A1 (base ecoalert_test sembrada) e integración A1 + A2
+docker-compose.yml  Base local con el esquema importado
+docker/initdb/      Creación de las bases de pruebas
 ```
 
-También se pueden correr desde el panel *Testing*: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> > *Python: Configure Tests* > *pytest* > carpeta `backend`.
+## Pruebas automatizadas (pytest)
+
+Hay dos suites, cada una con **su propia base `*_test`**; ninguna toca la base de desarrollo (`ecoalert`) ni de producción, y ambas se niegan a correr si el nombre no termina en `_test`:
+
+| Suite | Ubicación | Base | Qué hace con los datos |
+|---|---|---|---|
+| A1 + integración | `backend/tests/` | `ecoalert_test` | Importa el esquema y carga la semilla controlada `tests/sql/semilla.sql`; **no borra nada** |
+| A2 | `S05_S06_A2/pruebas/` | `ecoalert_auth_test` | Vacía `usuarios` y `sesiones` (CASCADE) antes de cada prueba; se niega a usar la base de A1 |
+
+Las bases se crean solas si no existen. Requisitos: PostgreSQL/PostGIS en marcha y `backend/.env` creado. Desde `backend` (con el entorno virtual activo):
+
+```powershell
+python -m pip install -r requirements-test.txt
+python -m pytest                         # ambas suites
+python -m pytest tests                   # solo A1 + integración
+python -m pytest ../S05_S06_A2/pruebas   # solo A2
+```
+
+En VS Code: abrir la carpeta del repositorio, seleccionar el intérprete `backend\.venv\Scripts\python.exe` y ejecutar los comandos en el terminal integrado, o usar el panel *Testing* (*Python: Configure Tests* > *pytest* > carpeta `backend`).
 
 | Archivo | Qué comprueba |
 |---|---|
-| `tests/sql/integridad.sql` + `test_integridad_sql.py` | 22 tablas, claves primarias y 32 claves foráneas, PostGIS (EPSG:32719) y 35 casos de restricciones (CHECK, UNIQUE, FK, índice parcial, historial con autor Sistema, idempotencia) dentro de una transacción que se revierte |
-| `test_contrato.py` | OpenAPI válido, 38 operaciones, PUT presente y sin DELETE de usuarios, 166 criterios Must del SRS cubiertos, 62 schemas = 62 clases UML y rutas del backend contenidas en el contrato |
-| `test_api_lecturas.py` | GET de alertas (paginación, filtros, 400), cargas, marcas, ajustes, historial (autor Sistema), trabajos, 404 y 400, con cada respuesta validada contra el esquema OpenAPI |
-| `test_api_usuarios.py` | POST, GET, PUT y PATCH con persistencia en PostgreSQL, regla de la última coordinación, sesiones cerradas al desactivar, idempotencia HMAC (reintento idéntico, conflicto por cualquier campo incluida la contraseña, errores no almacenados, expiración a 24 h) y concurrencia (10 reintentos con la misma clave, 10 altas con el mismo correo, desactivaciones simultáneas) |
+| `tests/sql/integridad.sql` + `test_integridad_sql.py` | 22 tablas, claves, PostGIS (EPSG:32719) y 35 casos de restricciones, en una transacción que se revierte |
+| `tests/test_contrato.py` | Contrato integrado válido, 39 operaciones, relación con los contratos originales de A1 y A2, 166 criterios Must del SRS, 62 schemas = 62 clases UML y 20 rutas del backend contenidas en el contrato |
+| `tests/test_api_lecturas.py`, `tests/test_api_usuarios.py` | Lecturas, POST/GET/PUT/PATCH, idempotencia HMAC, concurrencia y regla de la última coordinación, con una sesión JWT de Coordinación |
+| `tests/test_integracion_auth.py` | Roles sobre los datos de A1, login de cuentas creadas por A1, contraseña temporal, revocación inmediata con PUT/PATCH, `register` idempotente, hashes bcrypt/ilegibles y contraseñas largas |
+| `S05_S06_A2/pruebas/test_auth.py`, `test_security.py`, `test_config.py` | Login, registro, JWT (firma, expiración, `alg`), sesiones, cambio de contraseña, hash y configuración |
+| `S05_S06_A2/pruebas/test_proteccion_rutas.py` | 401 sin token y 403 por rol en **todas** las rutas montadas, según los `x-roles` del contrato integrado |
+| `S05_S06_A2/pruebas/pruebas_manuales.sh` | Pruebas manuales con `curl` (API en marcha, bash) |
 
-Variables opcionales: `TEST_DB_NAME` (otra base `*_test`; con un nombre nuevo se parte de una base limpia), `TEST_DATABASE_URL` (URL completa de una base `*_test`) y `API_BASE_URL` (usar una API ya levantada; se comprueba que lea la base de pruebas). Sin `IDEMPOTENCY_SECRET` en el entorno ni en `.env`, las pruebas usan uno efímero en memoria. El script SQL también corre con `psql`: `docker exec -i ecoalert_db psql -U ecoalert -d ecoalert_test -v ON_ERROR_STOP=1 < tests/sql/integridad.sql`.
+Variables opcionales: `TEST_DB_NAME` / `TEST_DATABASE_URL` (base de A1) y `TEST_AUTH_DB_NAME` / `TEST_AUTH_DATABASE_URL` (base de A2), siempre `*_test`; `API_BASE_URL` (usar una API ya levantada en la suite de A1; se comprueba que lea la base de pruebas). Las pruebas fijan secretos efímeros en memoria, de modo que no dependen de los de `.env`.
 
 ### Verificación local (25/10/2026)
-Entorno: Windows, Python 3.13.7, Docker Engine 29.8.0 e imagen `postgis/postgis:17-3.5` (PostgreSQL 17.5, PostGIS 3.5.2). El detalle de las correcciones y de lo pendiente está en `S05_S06_A1/revision_sql.md`, sección 7.
-- **Suite `pytest`:** 76 de 76 pruebas aprobadas, tanto en la base existente `ecoalert_test` como en una base nueva (`ecoalert_limpia_test`) que la propia suite creó e inicializó: importación del esquema sin errores, 22 tablas, 35 casos de integridad SQL, contrato, lecturas, PUT, PATCH, idempotencia HMAC y concurrencia.
-- **Postman/Newman** (`EcoAlert_pruebas`, API en el puerto 8001 sobre `ecoalert_test`): 31 requests de la colección (34 solicitudes HTTP contando 3 comprobaciones internas con `pm.sendRequest`), 68 aserciones, 0 fallos; ejecutada dos veces seguidas sin limpiar la base. La carpeta *1. Demostración* sola corre en menos de 1 s.
-- **Sin verificar:** operaciones no implementadas, escrituras sobre marcas, ajustes e historial (no existen en la API), rendimiento (RNF-04) y seguridad (esta entrega no tiene autenticación).
+Entorno: Windows, Python 3.13.7, Docker Engine 29.8.0, `postgis/postgis:17-3.5` (PostgreSQL 17.5, PostGIS 3.5.2).
+- **`python -m pytest`:** 225 de 225 aprobadas (101 de A1 + integración y 124 de A2), también por separado y en orden inverso.
+- **Prueba de humo contra uvicorn y PostgreSQL reales:** creación de la Coordinación con la CLI, login, 401 sin token y con token alterado, reintento idempotente, `PUT`/`PATCH`/`DELETE`, `register`, contraseña temporal, cambio de contraseña, revocación al desactivar y logout; todos los códigos coinciden con el contrato.
+- **Sin verificar:** operaciones no implementadas, rendimiento (RNF-04) y las colecciones Postman originales contra el backend integrado (usan el contrato anterior; ver `S05_S06_integracion/integracion.md`).
 
-### Pruebas con Postman
-`S05_S06_A1/postman/` contiene la colección y dos entornos: `EcoAlert_pruebas` (API en el puerto **8001** sobre la base `ecoalert_test`, el que usan la demostración y Newman) y `EcoAlert_local` (API de desarrollo en el 8000 sobre `ecoalert`, sin datos de prueba; solo sirve para `GET /salud`). La colección escribe datos, así que el request *0.2* aborta si la API no apunta a la base de pruebas sembrada.
-
-1. Preparar la base de pruebas una vez: `python -m pytest` (crea `ecoalert_test`, importa el esquema y carga la semilla).
-2. Levantar la API de pruebas (desde `backend`, con el entorno virtual activo; el valor de `DATABASE_URL` definido en la sesión tiene prioridad sobre el de `.env`):
-
-```powershell
-$env:DATABASE_URL = 'postgresql://ecoalert:ecoalert_dev@localhost:5432/ecoalert_test'
-python -m uvicorn app.main:app --port 8001 --env-file .env
-```
-
-3. Importar en Postman `EcoAlert_S05_S06_A1.postman_collection.json` y `EcoAlert_pruebas.postman_environment.json`, y seleccionar el entorno *EcoAlert - Pruebas*. O bien, desde la raíz del repositorio:
-
-```powershell
-npx --yes newman run S05_S06_A1/postman/EcoAlert_S05_S06_A1.postman_collection.json -e S05_S06_A1/postman/EcoAlert_pruebas.postman_environment.json
-```
-
-La carpeta *1. Demostración* tiene los seis requests del video (POST, GET y PUT de `/usuarios`, más `GET /alertas`, `GET /cargas-alertas` y `GET /zonas/{codigo}/historial`: seis operaciones sobre cinco rutas distintas); *1b* mantiene el `PATCH`; la carpeta *2* cubre `400`, `404`, `405`, `409`, `415`, `422`, idempotencia (incluido el cambio solo de contraseña) y la regla de la última coordinación con `PATCH` y `PUT`. Los correos y las claves se generan en cada ejecución, así que la colección se puede repetir sin limpiar la base.
-
-### Limitaciones importantes
-- Para que `POST /usuarios` y `PUT`/`PATCH /usuarios/{usuarioId}` cumplan con el SRS, debe exigirse rol Coordinación una vez implementado el login; por ahora es **solo demostración local**.
-- El modelo SQL y las vistas OpenAPI no son equivalentes 1:1. Los DTO se construyen en la API.
-- Las alertas sin zona o sin área no se publican en `GET /alertas` (el contrato exige ambas); cuando exista la ingesta deberán completarse en la misma transacción.
-- Una respuesta `405` (p. ej. `DELETE /usuarios/{id}`) incluye `Allow` solo con los métodos de la primera ruta coincidente (`GET`), no con todos los permitidos; no afecta al contrato.
-- Si se rota `IDEMPOTENCY_SECRET`, las claves de las últimas 24 h dejan de coincidir y sus reintentos responderán `422`; el secreto no debe cambiarse con operaciones en vuelo.
+## Limitaciones
+- El modelo SQL y las vistas OpenAPI no son equivalentes 1:1; los DTO se construyen en la API.
+- Las alertas sin zona o sin área no se publican en `GET /alertas` (el contrato exige ambas).
+- Una respuesta `405` incluye `Allow` solo con los métodos de la primera ruta coincidente, no con todos los permitidos; no afecta al contrato.
+- Si se rota `IDEMPOTENCY_SECRET`, las claves de las últimas 24 h dejan de coincidir y sus reintentos responderán `422`.
+- `claves_idempotencia` no está ligada a la cuenta que hizo la solicitud: quien repita una clave con el mismo cuerpo recibe la respuesta guardada.
+- La verificación de una cuenta con hash bcrypt tarda algo más que la de una Argon2id; es la única diferencia de tiempo entre cuentas existentes.

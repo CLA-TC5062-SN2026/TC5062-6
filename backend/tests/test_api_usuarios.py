@@ -1,6 +1,7 @@
 """Pruebas HTTP del recurso Usuarios: POST, GET, PUT, PATCH, idempotencia (HMAC) y concurrencia.
 
-Cada prueba crea sus propios usuarios con correos unicos; las bases de datos `*_test` son de uso exclusivo de estas pruebas.
+Todas las llamadas las hace una cuenta de Coordinación autenticada con JWT (fixture `api`), como exige la API
+integrada. Cada prueba crea sus propias cuentas con correos unicos; las bases `*_test` son de uso exclusivo de las pruebas.
 """
 import concurrent.futures as cf
 import hashlib
@@ -59,9 +60,9 @@ def test_post_crea_usuario_y_persiste(api, bd, conforme, crear_usuario):
 
 
 @pytest.mark.parametrize('cambio', [
-    {'correo': 'sin-arroba'}, {'password_temporal': 'corta'}, {'rol': 'superadmin'},
+    {'correo': 'sin-arroba'}, {'password_temporal': 'corta'}, {'password_temporal': 'x' * 129}, {'rol': 'superadmin'},
     {'nombre_completo': '   '}, {'administrador': True},
-], ids=['correo', 'password', 'rol', 'nombre', 'campo_extra'])
+], ids=['correo', 'password', 'password_larga', 'rol', 'nombre', 'campo_extra'])
 def test_post_rechaza_cuerpos_invalidos_con_422(api, bd, conforme, crear_usuario, cambio):
     r, cuerpo = crear_usuario(**cambio)
     es_problema(r, 422, 'VALIDACION', conforme)
@@ -184,20 +185,18 @@ def test_patch_exige_merge_patch_y_rechaza_vacio_o_nulo(api, conforme, crear_usu
 @pytest.mark.parametrize('metodo', ['PUT', 'PATCH'])
 @pytest.mark.parametrize('accion', ['desactivar', 'quitar_rol'])
 def test_protege_la_ultima_cuenta_de_coordinacion(api, bd, conforme, crear_usuario, metodo, accion):
-    unica = crear_usuario(rol='coordinacion')[0].json
-    dejar_solo(bd, unica['id'])
-    r = enviar(api, metodo, unica['id'], cambios_de(metodo, accion))
+    dejar_solo(bd, api.id)  # la cuenta autenticada es la unica coordinacion activa
+    r = enviar(api, metodo, api.id, cambios_de(metodo, accion))
     es_problema(r, 409, 'ULTIMA_COORDINACION', conforme)
-    assert bd('SELECT rol, activo FROM usuarios WHERE id = %s', (unica['id'],))[0] == ('coordinacion', True)
+    assert bd('SELECT rol, activo FROM usuarios WHERE id = %s', (api.id,))[0] == ('coordinacion', True)
     # Con otra coordinacion activa el mismo cambio si procede.
     crear_usuario(rol='coordinacion')
-    assert enviar(api, metodo, unica['id'], cambios_de(metodo, accion)).estado == 200
+    assert enviar(api, metodo, api.id, cambios_de(metodo, accion)).estado == 200
 
 
-def test_put_que_no_cambia_rol_ni_actividad_de_la_ultima_coordinacion_es_valido(api, bd, crear_usuario):
-    unica = crear_usuario(rol='coordinacion')[0].json
-    dejar_solo(bd, unica['id'])
-    r = api('PUT', f"{USUARIOS}/{unica['id']}", {'nombre_completo': 'Solo Cambia el Nombre', 'rol': 'coordinacion', 'activo': True})
+def test_put_que_no_cambia_rol_ni_actividad_de_la_ultima_coordinacion_es_valido(api, bd):
+    dejar_solo(bd, api.id)
+    r = api('PUT', f'{USUARIOS}/{api.id}', {'nombre_completo': 'Solo Cambia el Nombre', 'rol': 'coordinacion', 'activo': True})
     assert r.estado == 200 and r.json['nombre_completo'] == 'Solo Cambia el Nombre'
 
 
@@ -212,13 +211,16 @@ def test_desactivar_cierra_las_sesiones_abiertas(api, bd, crear_usuario, metodo)
 
 
 @pytest.mark.parametrize('metodo', ['PUT', 'PATCH'])
-def test_desactivaciones_simultaneas_nunca_dejan_cero_coordinaciones(api, bd, crear_usuario, metodo):
+def test_desactivaciones_simultaneas_nunca_dejan_cero_coordinaciones(abrir_sesion, bd, metodo):
     for _ in range(5):
-        a, b = (crear_usuario(rol='coordinacion')[0].json for _ in range(2))
-        dejar_solo(bd, a['id'], b['id'])
+        a, b = abrir_sesion('coordinacion'), abrir_sesion('coordinacion')
+        dejar_solo(bd, a.id, b.id)
+        # Cada coordinacion desactiva a la otra con su propio token.
         with cf.ThreadPoolExecutor(2) as pool:
-            estados = sorted(r.estado for r in pool.map(lambda u: enviar(api, metodo, u['id'], cambios_de(metodo, 'desactivar')), (a, b)))
-        assert estados == [200, 409]
+            estados = sorted(r.estado for r in pool.map(
+                lambda par: enviar(par[0], metodo, par[1].id, cambios_de(metodo, 'desactivar')), ((a, b), (b, a))))
+        # La que pierde recibe 409 si su peticion llego a la regla, o 401 si la otra ya la habia desactivado.
+        assert estados[0] == 200 and estados[1] in (401, 409), estados
         assert bd("SELECT count(*) FROM usuarios WHERE rol = 'coordinacion' AND activo")[0][0] == 1
 
 

@@ -1,0 +1,487 @@
+@startuml
+title EcoAlert Tambopata - Modelo de clases consolidado (SRS v1.0 / OpenAPI equipo)
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+hide empty methods
+left to right direction
+
+' Contrato: todos los nombres y atributos coinciden exactamente con components/schemas del OpenAPI.
+' Clases API: DTOs de entrada/salida; asociaciones de dominio no implican borrado en cascada.
+' Se conservan historiales, cambios de estado y retiros sin borrado fisico.
+' Las clases de DTO no equivalen necesariamente a tablas de la base de datos.
+
+package "Acceso y usuarios" {
+  enum Rol {
+    analista_sig
+    coordinacion
+  }
+  class UsuarioRef {
+    +id: String
+    +nombre_completo: String
+  }
+  class CredencialesLogin {
+    +correo: String
+    +password: String
+  }
+  class SesionCreada {
+    +access_token: String
+    +token_type: String
+    +expires_in: Integer
+    +inactividad_max_segundos: Integer
+    +usuario: Usuario
+  }
+  class SesionActual {
+    +usuario: Usuario
+    +ultima_actividad: String
+  }
+  class CambioPassword {
+    +password_actual: String
+    +password_nueva: String
+  }
+  class Usuario {
+    +id: String
+    +nombre_completo: String
+    +correo: String
+    +rol: Rol
+    +activo: Boolean
+    +debe_cambiar_password: Boolean
+    +creado_en: String
+  }
+  class UsuarioCrear {
+    +nombre_completo: String
+    +correo: String
+    +rol: Rol
+    +password_temporal: String
+  }
+  class UsuarioActualizar {
+    +nombre_completo: String
+    +rol: Rol
+    +activo: Boolean
+  }
+}
+
+package "Archivos, capas y alertas" {
+  enum TipoCapa {
+    limite_reserva
+    zona_amortiguamiento
+    rios
+    catastro_minero
+  }
+  enum CapaMapaId {
+    limite_reserva
+    zona_amortiguamiento
+    rios
+    catastro_minero
+    alertas_geobosques
+    zonas_cambio
+  }
+  class InspeccionArchivo {
+    +archivo_id: String
+    +nombre: String
+    +formato: String
+    +src_origen: String
+    +tipo_geometria: String
+    +num_elementos: Integer
+    +columnas: List~Object~
+    +expira_en: String
+  }
+  class AtributoDestino {
+    +nombre: String
+    +obligatorio: Boolean
+  }
+  class CapaReferencia {
+    +tipo: TipoCapa
+    +nombre: String
+    +geometria_esperada: String
+    +atributos_destino: List~AtributoDestino~
+    +version_vigente: VersionCapa
+    +texto_frescura: String
+  }
+  class VersionCapa {
+    +id: String
+    +tipo: TipoCapa
+    +fuente: String
+    +fecha_corte: String
+    +cargada_en: String
+    +cargada_por: UsuarioRef
+    +num_elementos: Integer
+    +vigente: Boolean
+  }
+  class CargaVersionCapa {
+    +archivo_id: String
+    +fuente: String
+    +fecha_corte: String
+    +mapeo_columnas: Object
+  }
+  class CargaAlertasSolicitud {
+    +archivo_id: String
+    +fuente: String
+    +fecha_corte: String
+    +mapeo_columnas: Object
+  }
+  class CargaAlertas {
+    +id: String
+    +fuente: String
+    +fecha_corte: String
+    +cargada_en: String
+    +cargada_por: UsuarioRef
+    +alertas_en_archivo: Integer
+    +alertas_nuevas: Integer
+    +alertas_existentes: Integer
+    +alertas_fuera_ambito: Integer
+    +alertas_ausentes: Integer
+    +zonas_creadas: Integer
+    +zonas_actualizadas: Integer
+    +resumen: String
+  }
+  class Alerta {
+    +id: String
+    +fuente: String
+    +codigo: String
+    +fecha_deteccion: String
+    +fecha_ingesta: String
+    +presente_en_ultima_carga: Boolean
+    +zona_codigo: CodigoZona
+    +area_ha: Decimal
+  }
+  class PaginaAlertas {
+    +alertas: List~Alerta~
+  }
+  class Trabajo {
+    +id: String
+    +tipo: String
+    +estado: String
+    +creado_en: String
+    +actualizado_en: String
+    +mensaje_estado: String
+    +resultado: Object
+    +error: Error
+  }
+  class CapaMapa {
+    +id: CapaMapaId
+    +nombre: String
+    +tipo_geometria: String
+    +fecha_corte: String
+    +texto_frescura: String
+    +aviso: String
+  }
+}
+
+package "Zonas, geometrias y contexto" {
+  enum EstadoZona {
+    nueva
+    en_revision
+    requiere_verificacion
+    revisada
+    descartada
+  }
+  class CodigoZona <<valor>>
+  class Geometria {
+    +type: String
+    +coordinates: List~Object~
+  }
+  class Feature {
+    +type: String
+    +id: String
+    +geometry: Geometria
+    +properties: Object
+  }
+  class FeatureCollection {
+    +type: String
+    +features: List~Feature~
+  }
+  class ZonaResumen {
+    +codigo: CodigoZona
+    +estado: EstadoZona
+    +nivel: NivelVigente
+    +puntaje_vigente: Integer
+    +puntaje_calculado: Integer
+    +ajuste_vigente: AjusteVigente
+    +puntaje_texto: String
+    +factores: List~Factor~
+    +texto_desglose: String
+    +marcas: List~MarcaResumen~
+    +area_ha: Decimal
+    +num_alertas: Integer
+    +fecha_alerta_mas_reciente: String
+  }
+  class ConteosZonas {
+    +por_nivel: Object
+    +por_estado: Object
+  }
+  class ListaZonas {
+    +alertas_al: String
+    +aviso_frescura: String
+    +conteos: ConteosZonas
+    +zonas: List~ZonaResumen~
+    +mensaje: String
+  }
+  class SuperposicionArea {
+    +capa: String
+    +codigo: String
+    +nombre: String
+    +fecha_corte: String
+  }
+  class SuperposicionMinera {
+    +capa: String
+    +tipo_derecho: String
+    +codigo: String
+    +estado: String
+    +fecha_corte: String
+  }
+  abstract class Superposicion <<union>>
+  class RioCercano {
+    +disponible: Boolean
+    +distancia_m: Integer
+    +nombre: String
+    +texto: String
+    +fecha_corte: String
+    +mensaje: String
+  }
+  class ContextoTerritorial {
+    +superposiciones: List~Superposicion~
+    +mensaje_superposiciones: String
+    +rio_cercano: RioCercano
+    +fuentes: List~FuenteUsada~
+  }
+  class ZonaDetalle {
+    +codigo: CodigoZona
+    +estado: EstadoZona
+    +nivel: NivelVigente
+    +puntaje_vigente: Integer
+    +puntaje_texto: String
+    +ajuste_vigente: AjusteVigente
+    +prioridad: Prioridad
+    +contexto: ContextoTerritorial
+    +marcas: List~Marca~
+    +area_ha: Decimal
+    +num_alertas: Integer
+    +fecha_alerta_mas_reciente: String
+    +creada_en: String
+    +fecha_ultimo_cambio_estado: String
+    +geometria: Geometria
+  }
+}
+
+package "Prioridad, ajustes, marcas e historial" {
+  enum NivelPrioridad {
+    alta
+    media
+    baja
+  }
+  enum NivelVigente {
+    alta
+    media
+    baja
+    no_disponible
+  }
+  enum TipoFactor {
+    ubicacion
+    persistencia_crecimiento
+    cercania_rios
+    superficie
+    recencia
+  }
+  class Factor {
+    +factor: TipoFactor
+    +peso: Integer
+    +disponible: Boolean
+    +valor_normalizado: Decimal
+    +aporte: Decimal
+    +aporte_texto: String
+    +texto_explicativo: String
+  }
+  class Prioridad {
+    +puntaje: Integer
+    +nivel: NivelVigente
+    +fecha_referencia: String
+    +version_pesos: Integer
+    +calculado_en: String
+    +factores: List~Factor~
+    +texto_desglose: String
+    +fuentes: List~FuenteUsada~
+  }
+  class AjusteVigente {
+    +id: String
+    +forma: String
+    +puntaje_ajustado: Integer
+  }
+  class CambioEstadoSolicitud {
+    +estado_nuevo: EstadoZona
+    +texto: String
+  }
+  abstract class AjusteSolicitud <<union>>
+  class AjustePorPuntaje {
+    +forma: String
+    +puntaje: Integer
+    +justificacion: String
+  }
+  class AjustePorNivel {
+    +forma: String
+    +nivel: NivelPrioridad
+    +justificacion: String
+  }
+  class AjustePrioridad {
+    +id: String
+    +forma: String
+    +nivel_elegido: NivelPrioridad
+    +puntaje_ajustado: Integer
+    +puntaje_calculado_al_ajustar: Integer
+    +justificacion: String
+    +estado: String
+    +creado_en: String
+    +creado_por: UsuarioRef
+    +retirado_en: String
+    +retirado_por: UsuarioRef
+    +justificacion_retiro: String
+  }
+  class RetiroAjusteSolicitud {
+    +estado: String
+    +justificacion_retiro: String
+  }
+  class MarcaResumen {
+    +id: String
+    +tipo: String
+    +texto: String
+  }
+  class Marca {
+    +id: String
+    +tipo: String
+    +origen: String
+    +rotulo: String
+    +texto: String
+    +activa: Boolean
+    +creada_en: String
+    +creada_por: UsuarioRef
+    +retirada_en: String
+    +retirada_por: UsuarioRef
+    +motivo_retiro: String
+  }
+  class MarcaAnalistaSolicitud {
+    +texto: String
+  }
+  class RetiroMarcaSolicitud {
+    +activa: Boolean
+    +motivo_retiro: String
+  }
+  class EntradaHistorial {
+    +id: String
+    +tipo_accion: String
+    +fecha_hora: String
+    +autor: Object
+    +codigo_alerta_origen: String
+    +estado_anterior: EstadoZona
+    +estado_nuevo: EstadoZona
+    +ajuste_id: String
+    +forma: String
+    +nivel_elegido: NivelPrioridad
+    +puntaje_calculado: Integer
+    +puntaje_ajustado: Integer
+    +marca_id: String
+    +texto_marca: String
+    +texto: String
+  }
+}
+
+package "Comparacion y exportacion" {
+  class Periodo {
+    +inicio: String
+    +fin: String
+  }
+  class ComparacionSolicitud {
+    +periodos: List~Periodo~
+  }
+  class FuenteUsada {
+    +capa: String
+    +fuente: String
+    +fecha_corte: String
+  }
+  class ResultadoZona {
+    +codigo_zona: CodigoZona
+    +alertas_a: Integer
+    +alertas_b: Integer
+    +area_a_ha: Decimal
+    +area_b_ha: Decimal
+    +diferencia_ha: Decimal
+    +presencia: String
+    +nivel: NivelVigente
+    +puntaje: Integer
+    +estado: EstadoZona
+  }
+  class AnalisisResumen {
+    +id: String
+    +ejecutado_en: String
+    +ejecutado_por: UsuarioRef
+    +periodo_a: Periodo
+    +periodo_b: Periodo
+    +estado: String
+  }
+  class Analisis {
+    +fuentes: List~FuenteUsada~
+    +limitaciones: List~String~
+    +mensaje: String
+    +resultados: List~ResultadoZona~
+  }
+  class ListaAnalisis {
+    +analisis: List~AnalisisResumen~
+    +mensaje: String
+  }
+}
+
+package "Tipos transversales" {
+  class Error {
+    +type: String
+    +title: String
+    +status: Integer
+    +detail: String
+    +instance: String
+    +codigo: String
+    +mensaje: String
+    +detalles: List~Object~
+  }
+  class Pagina {
+    +total: Integer
+    +limite: Integer
+    +desplazamiento: Integer
+  }
+}
+
+
+' Relaciones conceptuales y especializaciones del contrato
+Usuario "1" -- "0..*" SesionActual : sesion activa / identidad
+Usuario "1" -- "0..*" VersionCapa : carga
+CapaReferencia "1" *-- "0..*" VersionCapa : versiones
+Usuario "1" -- "0..*" CargaAlertas : realiza
+CargaAlertas "1" -- "0..*" Alerta : incorpora
+ZonaDetalle "1" -- "1..*" Alerta : agrupa sin destruir alertas
+ZonaDetalle "1" o-- "1" Prioridad : calculo vigente
+Prioridad "1" *-- "5" Factor : desglose
+ZonaDetalle "1" -- "0..*" AjustePrioridad : ajustes auditables
+ZonaDetalle "1" -- "0..*" Marca : marcas auditables
+ZonaDetalle "1" -- "1..*" EntradaHistorial : eventos inmutables
+ZonaDetalle "1" o-- "1" ContextoTerritorial : contexto derivado
+ContextoTerritorial "1" o-- "0..*" Superposicion : intersecciones
+Analisis "1" *-- "0..*" ResultadoZona : snapshot inmutable
+Analisis "1" *-- "2" Periodo : A y B
+Analisis "1" o-- "0..*" FuenteUsada : procedencia
+Usuario "1" -- "0..*" Analisis : ejecuta
+ComparacionSolicitud "1" *-- "2" Periodo : entrada
+AjusteSolicitud <|-- AjustePorPuntaje
+AjusteSolicitud <|-- AjustePorNivel
+Superposicion <|-- SuperposicionArea
+Superposicion <|-- SuperposicionMinera
+AnalisisResumen <|-- Analisis
+Pagina <|-- ListaZonas
+Pagina <|-- ListaAnalisis
+Pagina <|-- PaginaAlertas
+
+note bottom of ZonaDetalle
+  ZonaDetalle y ZonaResumen son vistas API de la misma zona.
+  El estado, la prioridad y las marcas siguen el SRS.
+end note
+note bottom of Analisis
+  El resultado es una instantanea; no se recalcula
+  al cambiar la zona posteriormente.
+end note
+@enduml
