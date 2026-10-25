@@ -111,7 +111,7 @@ servers:
   description: Desarrollo local (Docker Compose)
 
 security:
-- bearerAuth: []
+- BearerAuth: []
 
 tags:
 - name: Autenticación
@@ -1931,7 +1931,7 @@ paths:
 components:
 
   securitySchemes:
-    bearerAuth:
+    BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
