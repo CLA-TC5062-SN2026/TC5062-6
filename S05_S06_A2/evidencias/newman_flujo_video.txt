@@ -1,0 +1,46 @@
+newman
+EcoAlert — Autenticación JWT (S05-S06-A2)
+❏ 0. Preparación (antes de grabar)
+↳ Login de Coordinación
+  POST http://127.0.0.1:8000/api/v1/auth/login [200 OK, 1.01kB, 193ms]
+  ✓  Responde 200
+❏ 1. Video (grabar en este orden)
+↳ 1 · POST /auth/register (Coordinación registra analista)
+  POST http://127.0.0.1:8000/api/v1/auth/register [201 Created, 616B, 180ms]
+  ✓  Responde 201
+  ✓  No devuelve la contraseña
+↳ 2 · POST /auth/login (analista)
+  POST http://127.0.0.1:8000/api/v1/auth/login [200 OK, 1.02kB, 179ms]
+  ✓  Responde 200
+↳ 3 · GET /auth/me (token del paso 2)
+  GET http://127.0.0.1:8000/api/v1/auth/me [200 OK, 612B, 9ms]
+  ✓  Responde 200
+↳ 4 · GET /usuarios con token válido de Coordinación
+  GET http://127.0.0.1:8000/api/v1/usuarios [200 OK, 1.98kB, 8ms]
+  ✓  Responde 200
+↳ 5 · GET /usuarios sin token
+  GET http://127.0.0.1:8000/api/v1/usuarios [401 Unauthorized, 596B, 1ms]
+  ✓  Responde 401
+↳ 6 · GET /usuarios con token de rol incorrecto (Analista SIG)
+  GET http://127.0.0.1:8000/api/v1/usuarios [403 Forbidden, 507B, 6ms]
+  ✓  Responde 403
+  ✓  Código ROL_NO_PERMITIDO
+┌─────────────────────────┬───────────────────┬──────────────────┐
+│                         │          executed │           failed │
+├─────────────────────────┼───────────────────┼──────────────────┤
+│              iterations │                 1 │                0 │
+├─────────────────────────┼───────────────────┼──────────────────┤
+│                requests │                 7 │                0 │
+├─────────────────────────┼───────────────────┼──────────────────┤
+│            test-scripts │                 7 │                0 │
+├─────────────────────────┼───────────────────┼──────────────────┤
+│      prerequest-scripts │                 1 │                0 │
+├─────────────────────────┼───────────────────┼──────────────────┤
+│              assertions │                 9 │                0 │
+├─────────────────────────┴───────────────────┴──────────────────┤
+│ total run duration: 653ms                                      │
+├────────────────────────────────────────────────────────────────┤
+│ total data received: 4.02kB (approx)                           │
+├────────────────────────────────────────────────────────────────┤
+│ average response time: 82ms [min: 1ms, max: 193ms, s.d.: 88ms] │
+└────────────────────────────────────────────────────────────────┘

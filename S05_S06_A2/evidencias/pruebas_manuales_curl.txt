@@ -1,0 +1,60 @@
+=== Registro de analista por Coordinación (201, sin contraseña en la respuesta)
+$ curl -X POST http://127.0.0.1:8000/api/v1/auth/register -H Content-Type:\ application/json -H Authorization:\ Bearer\ <token> -d \{\"nombre_completo\":\"Analista\ Prueba\"\,\"correo\":\"analista.1792905057@ecoalert.pe\"\,\"rol\":\"analista_sig\"\,\"password_temporal\":\"Temporal-2026-xyz\"\}
+HTTP 201
+{"id":"66359b6d-c798-4e3c-81d2-0bc3f3669011","nombre_completo":"Analista Prueba","correo":"analista.1792905057@ecoalert.pe","rol":"analista_sig","activo":true,"debe_cambiar_password":true,"creado_en":"2026-10-25T05:10:58.176970+00:00"}
+
+=== Analista con contraseña temporal en ruta CRUD (403 CAMBIO_PASSWORD_REQUERIDO)
+$ curl http://127.0.0.1:8000/api/v1/alertas -H Authorization:\ Bearer\ <token>
+HTTP 403
+{"type":"about:blank","title":"Forbidden","status":403,"detail":"Debes definir una contraseña nueva antes de continuar","codigo":"CAMBIO_PASSWORD_REQUERIDO","mensaje":"Debes definir una contraseña nueva antes de continuar"}
+
+=== Analista cambia su contraseña temporal (204)
+$ curl -X PUT http://127.0.0.1:8000/api/v1/auth/password -H Content-Type:\ application/json -H Authorization:\ Bearer\ <token> -d \{\"password_actual\":\"Temporal-2026-xyz\"\,\"password_nueva\":\"Analista-Nueva-2026\"\}
+HTTP 204
+
+
+=== CASO 1 - Ruta protegida sin token (401)
+$ curl http://127.0.0.1:8000/api/v1/usuarios
+HTTP 401
+{"type":"about:blank","title":"Unauthorized","status":401,"detail":"La sesión expiró o no es válida. Inicia sesión de nuevo.","codigo":"NO_AUTENTICADO","mensaje":"La sesión expiró o no es válida. Inicia sesión de nuevo."}
+
+=== CASO 2 - Ruta protegida con token alterado en 1 carácter (401)
+$ curl http://127.0.0.1:8000/api/v1/usuarios -H Authorization:\ Bearer\ <token>
+HTTP 401
+{"type":"about:blank","title":"Unauthorized","status":401,"detail":"La sesión expiró o no es válida. Inicia sesión de nuevo.","codigo":"NO_AUTENTICADO","mensaje":"La sesión expiró o no es válida. Inicia sesión de nuevo."}
+
+=== CASO 3 - Ruta de Coordinación con token de Analista SIG (403)
+$ curl http://127.0.0.1:8000/api/v1/usuarios -H Authorization:\ Bearer\ <token>
+HTTP 403
+{"type":"about:blank","title":"Forbidden","status":403,"detail":"Tu rol no permite realizar esta acción","codigo":"ROL_NO_PERMITIDO","mensaje":"Tu rol no permite realizar esta acción"}
+
+=== CASO 4 - Ruta de Coordinación con token de Coordinación (200)
+$ curl http://127.0.0.1:8000/api/v1/usuarios\?activo=true -H Authorization:\ Bearer\ <token>
+HTTP 200
+[{"id":"a505d91b-1a02-4d56-8a9c-ed0e94842bd8","nombre_completo":"Analista Prueba","correo":"analista.1792903877@ecoalert.pe","rol":"analista_sig","activo":true,"debe_cambiar_password":false,"creado_en":"2026-10-25T04:51:18.102061+00:00"},{"id":"866eb24c-6727-4c05-aaa2-a26b1e9f96ba","nombre_completo":"Analista Prueba","correo":"analista.1792903901@ecoalert.pe","rol":"analista_sig","activo":true,"debe_cambiar_password":false,"creado_en":"2026-10-25T04:51:42.430290+00:00"},{"id":"66359b6d-c798-4e3c-81d2-0bc3f3669011","nombre_completo":"Analista Prueba","correo":"analista.1792905057@ecoalert.pe","rol":"analista_sig","activo":true,"debe_cambiar_password":false,"creado_en":"2026-10-25T05:10:58.176970+00:00"},{"id":"76255334-1924-4b8f-af68-4315c12926c7","nombre_completo":"Ana Quispe Mamani","correo":"analista.1792903949964@ecoalert.pe","rol":"analista_sig","activo":true,"debe_cambiar_password":true,"creado_en":"2026-10-25T04:52:30.151125+00:00"},{"id":"c693f8d9-2992-4cc0-9a54-9dfd1a5304d3","nombre_completo":"Ana Quispe Mamani","correo":"analista.1792904035036@ecoalert.pe","rol":"analista_sig","activo":true,"debe_cambiar_password":true,"creado_en":"2026-10-25T04:53:55.230106+00:00"},{"id":"ce4af987-69a9-40e1-b976-a6eaf6815212","nombre_completo":"Coordinación Demo","correo":"coordinacion@ecoalert.pe","rol":"coordinacion","activo":true,"debe_cambiar_password":false,"creado_en":"2026-10-25T04:50:47.996178+00:00"}]
+
+=== EXTRA - Ruta de ambos roles con token de Analista SIG (200)
+$ curl http://127.0.0.1:8000/api/v1/alertas -H Authorization:\ Bearer\ <token>
+HTTP 200
+[]
+
+=== EXTRA - Registro con token de Analista SIG (403)
+$ curl -X POST http://127.0.0.1:8000/api/v1/auth/register -H Content-Type:\ application/json -H Authorization:\ Bearer\ <token> -d \{\"nombre_completo\":\"X\"\,\"correo\":\"x@ecoalert.pe\"\,\"rol\":\"coordinacion\"\,\"password_temporal\":\"Temporal-2026-xyz\"\}
+HTTP 403
+{"type":"about:blank","title":"Forbidden","status":403,"detail":"Tu rol no permite realizar esta acción","codigo":"ROL_NO_PERMITIDO","mensaje":"Tu rol no permite realizar esta acción"}
+
+=== EXTRA - Login con contraseña incorrecta (401 genérico)
+$ curl -X POST http://127.0.0.1:8000/api/v1/auth/login -H Content-Type:\ application/json -d \{\"correo\":\"analista.1792905057@ecoalert.pe\"\,\"password\":\"incorrecta-123\"\}
+HTTP 401
+{"type":"about:blank","title":"Unauthorized","status":401,"detail":"Usuario o contraseña incorrectos","codigo":"CREDENCIALES_INVALIDAS","mensaje":"Usuario o contraseña incorrectos"}
+
+=== EXTRA - Logout (204)
+$ curl -X POST http://127.0.0.1:8000/api/v1/auth/logout -H Authorization:\ Bearer\ <token>
+HTTP 204
+
+
+=== EXTRA - Reutilizar el token después del logout (401)
+$ curl http://127.0.0.1:8000/api/v1/auth/me -H Authorization:\ Bearer\ <token>
+HTTP 401
+{"type":"about:blank","title":"Unauthorized","status":401,"detail":"La sesión expiró o no es válida. Inicia sesión de nuevo.","codigo":"NO_AUTENTICADO","mensaje":"La sesión expiró o no es válida. Inicia sesión de nuevo."}
+
