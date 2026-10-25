@@ -1,11 +1,26 @@
 # Submission bundles — generated artefacts, not source
 *.zip
 
-# macOS
+# macOS / Windows
 .DS_Store
+Thumbs.db
 
-# Python / secretos locales
-.env
-.venv/
+# Python
 __pycache__/
+*.pyc
+.venv/
+venv/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Variables de entorno locales (la plantilla backend/.env.example sí se versiona)
+.env
+.env.*
+!.env.example
+
+# Registros locales
+*.log
+
+# Configuración personal del editor
+.vscode/

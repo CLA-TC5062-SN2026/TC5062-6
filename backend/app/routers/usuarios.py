@@ -1,75 +1,98 @@
 """Gestión de cuentas (RF-02). Todas las operaciones son exclusivas de Coordinación."""
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi.responses import JSONResponse
 from psycopg.errors import UniqueViolation
 
 from app import db
-from app.dependencies import COORDINACION, solo_coordinacion
-from app.errors import fail
-from app.schemas import UsuarioActualizar, UsuarioCrear
+from app.dependencies import Identidad, solo_coordinacion
+from app.errors import ApiError, encontrado
+from app.schemas import Usuario, UsuarioActualizar, UsuarioCrear, UsuarioReemplazar
 from app.security import hashear
-from app.serializacion import json_safe
 
 # Nunca incluir password_hash: la lista de columnas es explícita, no SELECT *.
 USER_FIELDS = 'id,nombre_completo,correo,rol,activo,debe_cambiar_password,creado_en'
-RUTA_USUARIO = '/api/v1/usuarios/{}'
 
-router = APIRouter(prefix='/usuarios', tags=['Usuarios'])
-
-
-def insertar_usuario(body: UsuarioCrear, response: Response) -> dict:
-    """Crea la cuenta activa y con contraseña temporal (RF-02-AC-1). Compartida con /auth/register."""
-    try:
-        with db.transaccion() as conn:
-            fila = conn.execute(
-                f'''INSERT INTO usuarios (nombre_completo,correo,rol,password_hash)
-                    VALUES (%s,%s,%s,%s) RETURNING {USER_FIELDS}''',
-                (body.nombre_completo, str(body.correo), body.rol, hashear(body.password_temporal)),
-            ).fetchone()
-    except UniqueViolation:
-        fail(409, 'Ya existe una cuenta con ese correo', 'CORREO_DUPLICADO')
-    response.headers['Location'] = RUTA_USUARIO.format(fila['id'])
-    return json_safe(fila)
+router = APIRouter(prefix='/usuarios', tags=['Usuarios'], dependencies=[Depends(solo_coordinacion)])
 
 
-@router.get('', dependencies=[Depends(solo_coordinacion)])
+def exigir_merge_patch(request: Request):
+    if request.headers.get('content-type', '').split(';')[0].strip().lower() != 'application/merge-patch+json':
+        raise ApiError(415, 'TIPO_CONTENIDO_NO_SOPORTADO', 'Usa Content-Type application/merge-patch+json')
+
+
+def insertar_usuario(body: UsuarioCrear, request: Request, response: Response, clave: UUID, actor: UUID):
+    """Alta idempotente de la cuenta, activa y con contraseña temporal (RF-02-AC-1). Compartida con /auth/register.
+
+    La clave se guarda asociada a la cuenta `actor` (columna `operacion`): otra cuenta que la reutilice recibe 422.
+    """
+    operacion = f'crearUsuario:{actor}'
+    huella = db.huella(body.model_dump(mode='json'))
+    with db.transaction() as conn:
+        previa = db.respuesta_previa(conn, clave, operacion, huella)
+        if previa:
+            return JSONResponse(previa['cuerpo_respuesta'], previa['estado_http'], {'Location': previa['location']})
+        try:
+            fila = db.query(conn, f'INSERT INTO usuarios (nombre_completo, correo, rol, password_hash) '
+                                  f'VALUES (%s, %s, %s, %s) RETURNING {USER_FIELDS}',
+                            (body.nombre_completo, str(body.correo), body.rol, hashear(body.password_temporal)),
+                            one=True)
+        except UniqueViolation:
+            raise ApiError(409, 'CORREO_DUPLICADO', 'Ya existe una cuenta con ese correo') from None
+        usuario = Usuario(**fila)
+        location = request.app.url_path_for('obtener_usuario', usuarioId=usuario.id)
+        db.guardar_respuesta(conn, clave, operacion, huella, 201, usuario.model_dump(mode='json'), location)
+    response.headers['Location'] = location
+    return usuario
+
+
+@router.get('', response_model=list[Usuario])
 def listar_usuarios(activo: bool | None = None):
-    rows = db.run(f'SELECT {USER_FIELDS} FROM usuarios WHERE (%s::boolean IS NULL OR activo=%s) ORDER BY nombre_completo', (activo, activo))
-    return json_safe(rows)
+    return db.run(f'SELECT {USER_FIELDS} FROM usuarios WHERE (%s::boolean IS NULL OR activo=%s) ORDER BY nombre_completo',
+                  (activo, activo))
 
 
-@router.post('', status_code=201, dependencies=[Depends(solo_coordinacion)])
-def crear_usuario(body: UsuarioCrear, response: Response):
-    return insertar_usuario(body, response)
+@router.post('', status_code=201, response_model=Usuario)
+def crear_usuario(body: UsuarioCrear, request: Request, response: Response,
+                  idempotency_key: Annotated[UUID, Header()], identidad: Identidad = Depends(solo_coordinacion)):
+    return insertar_usuario(body, request, response, idempotency_key, identidad.usuario['id'])
 
 
-@router.get('/{usuarioId}', dependencies=[Depends(solo_coordinacion)])
+@router.get('/{usuarioId}', response_model=Usuario)
 def obtener_usuario(usuarioId: UUID):
-    row = db.run(f'SELECT {USER_FIELDS} FROM usuarios WHERE id=%s', (usuarioId,), one=True)
-    if not row: fail(404, 'Usuario no encontrado')
-    return json_safe(row)
+    return encontrado(db.run(f'SELECT {USER_FIELDS} FROM usuarios WHERE id=%s', (usuarioId,), one=True),
+                      f'No existe el usuario {usuarioId}')
 
 
-@router.patch('/{usuarioId}', dependencies=[Depends(solo_coordinacion)])
+def aplicar_cambios(usuarioId: UUID, cambios: dict):
+    """Actualización transaccional de una cuenta, compartida por PUT y PATCH."""
+    with db.transaction() as conn:
+        # Se bloquean las cuentas de coordinación activas para que dos cambios simultáneos no dejen el sistema sin ninguna.
+        coordinacion = db.query(conn, "SELECT id FROM usuarios WHERE rol='coordinacion' AND activo ORDER BY id FOR UPDATE")
+        actual = encontrado(db.query(conn, 'SELECT rol, activo FROM usuarios WHERE id=%s FOR UPDATE', (usuarioId,), one=True),
+                            f'No existe el usuario {usuarioId}')
+        desactiva = cambios.get('activo') is False
+        quita_rol = cambios.get('rol', actual['rol']) != 'coordinacion'
+        if actual['rol'] == 'coordinacion' and actual['activo'] and len(coordinacion) == 1 and (desactiva or quita_rol):
+            accion = 'desactivar' if desactiva else 'quitar el rol a'
+            raise ApiError(409, 'ULTIMA_COORDINACION', f'No se puede {accion} la última cuenta de coordinación')
+        # Los nombres de columna provienen del esquema (extra='forbid'), nunca del cliente.
+        asignaciones = ', '.join(f'{campo}=%s' for campo in cambios)
+        fila = db.query(conn, f'UPDATE usuarios SET {asignaciones} WHERE id=%s RETURNING {USER_FIELDS}',
+                        (*cambios.values(), usuarioId), one=True)
+        if desactiva:
+            db.query(conn, 'UPDATE sesiones SET revocada_en = now() WHERE usuario_id=%s AND revocada_en IS NULL',
+                     (usuarioId,))
+    return fila
+
+
+@router.put('/{usuarioId}', response_model=Usuario)
+def reemplazar_usuario(usuarioId: UUID, body: UsuarioReemplazar):
+    return aplicar_cambios(usuarioId, body.model_dump())
+
+
+@router.patch('/{usuarioId}', response_model=Usuario, dependencies=[Depends(exigir_merge_patch)])
 def actualizar_usuario(usuarioId: UUID, body: UsuarioActualizar):
-    data = body.model_dump(exclude_unset=True)
-    if not data or any(v is None for v in data.values()): fail(422, 'Debe indicar al menos un campo válido')
-    # Lista blanca de campos, nunca interpolar nombres provenientes directamente del usuario.
-    fields = [k for k in ('nombre_completo', 'rol', 'activo') if k in data]
-    updates = ', '.join(f'{k}=%s' for k in fields)
-    with db.transaccion() as conn:
-        # FOR UPDATE serializa las modificaciones concurrentes de cuentas de coordinación.
-        coordinadores = {r['id'] for r in conn.execute(
-            'SELECT id FROM usuarios WHERE rol=%s AND activo FOR UPDATE', (COORDINACION,)).fetchall()}
-        pierde_coordinacion = usuarioId in coordinadores and (
-            data.get('activo') is False or data.get('rol', COORDINACION) != COORDINACION)
-        if pierde_coordinacion and len(coordinadores) == 1:
-            fail(409, 'No se puede quitar el rol o desactivar la última cuenta de coordinación', 'ULTIMA_COORDINACION')
-        row = conn.execute(f'UPDATE usuarios SET {updates} WHERE id=%s RETURNING {USER_FIELDS}',
-                           tuple(data[k] for k in fields) + (usuarioId,)).fetchone()
-        if not row: fail(404, 'Usuario no encontrado')
-        if data.get('activo') is False:
-            # Al desactivar se cierran sus sesiones abiertas (contrato, actualizarUsuario).
-            conn.execute('UPDATE sesiones SET revocada_en=now() WHERE usuario_id=%s AND revocada_en IS NULL', (usuarioId,))
-    return json_safe(row)
+    return aplicar_cambios(usuarioId, body.model_dump(exclude_unset=True))

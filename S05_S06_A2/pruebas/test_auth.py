@@ -2,14 +2,21 @@
 from datetime import datetime, timedelta, timezone
 
 import jwt
-from argon2 import PasswordHasher
+import pytest
+from pwdlib import PasswordHash
+from pwdlib.hashers.bcrypt import BcryptHasher
 
 from app.config import get_settings
-from tests.conftest import PASSWORD, bearer
+from conftest import PASSWORD, bearer, con_clave
 
 LOGIN, REGISTER, ME = '/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/auth/me'
 NUEVA_CUENTA = {'nombre_completo': 'Ana Quispe Mamani', 'correo': 'ana.quispe@ecoalert.pe',
                 'rol': 'analista_sig', 'password_temporal': 'Temporal-2026'}
+
+
+def _hash_bcrypt(password):
+    """Hash bcrypt como el de una cuenta creada antes de la integración (coste mínimo para no ralentizar la suite)."""
+    return PasswordHash((BcryptHasher(rounds=4),)).hash(password)
 
 
 def _claims(token):
@@ -74,24 +81,58 @@ def test_login_con_password_mayor_a_72_bytes_responde_401_y_no_500(client, crear
     assert r.status_code == 401
 
 
-def test_login_migra_hash_argon2_heredado_a_bcrypt(client, crear_cuenta, conn):
-    correo = crear_cuenta(hash_=PasswordHasher().hash(PASSWORD))
+def test_login_con_password_mayor_a_72_bytes_y_hash_bcrypt_responde_401_y_no_500(client, crear_cuenta):
+    # bcrypt no admite más de 72 bytes: la librería lanzaría ValueError si no se controlara.
+    correo = crear_cuenta(hash_=_hash_bcrypt(PASSWORD))
+    r = client.post(LOGIN, json={'correo': correo, 'password': 'x' * 100})
+    assert r.status_code == 401
+    assert r.json()['codigo'] == 'CREDENCIALES_INVALIDAS'
+
+
+def test_login_con_password_mayor_al_maximo_de_entrada_responde_422(client, crear_cuenta):
+    correo = crear_cuenta()
+    assert client.post(LOGIN, json={'correo': correo, 'password': 'x' * 1025}).status_code == 422
+
+
+@pytest.mark.parametrize('hash_', ['texto-que-no-es-un-hash', '', '$argon2id$basura', '$2b$12$corto'])
+def test_login_con_hash_ilegible_responde_401_y_no_500(client, crear_cuenta, hash_):
+    correo = crear_cuenta(hash_=hash_)
+    r = client.post(LOGIN, json={'correo': correo, 'password': PASSWORD})
+    assert r.status_code == 401
+    assert r.json() == client.post(LOGIN, json={'correo': 'nadie@ecoalert.pe', 'password': PASSWORD}).json()
+
+
+def test_login_migra_hash_bcrypt_heredado_a_argon2(client, crear_cuenta, conn):
+    correo = crear_cuenta(hash_=_hash_bcrypt(PASSWORD))
     assert client.post(LOGIN, json={'correo': correo, 'password': PASSWORD}).status_code == 200
     guardado = conn.execute('SELECT password_hash FROM usuarios WHERE correo=%s', (correo,)).fetchone()[0]
-    assert guardado.startswith('$2b$12$')
+    assert guardado.startswith('$argon2id$')
+    assert client.post(LOGIN, json={'correo': correo, 'password': PASSWORD}).status_code == 200
 
 
 # --- Registro --------------------------------------------------------------
 
 def test_register_devuelve_201_sin_password(client, token_coordinacion, conn):
-    r = client.post(REGISTER, json=NUEVA_CUENTA, headers=bearer(token_coordinacion))
+    r = client.post(REGISTER, json=NUEVA_CUENTA, headers=con_clave(token_coordinacion))
     assert r.status_code == 201
     cuerpo = r.json()
     assert not {'password', 'password_temporal', 'password_hash'} & cuerpo.keys()
     assert cuerpo['debe_cambiar_password'] is True and cuerpo['activo'] is True
     assert r.headers['location'] == f"/api/v1/usuarios/{cuerpo['id']}"
     guardado = conn.execute('SELECT password_hash FROM usuarios WHERE id=%s', (cuerpo['id'],)).fetchone()[0]
-    assert guardado.startswith('$2b$12$') and NUEVA_CUENTA['password_temporal'] not in guardado
+    assert guardado.startswith('$argon2id$') and NUEVA_CUENTA['password_temporal'] not in guardado
+
+
+def test_register_exige_idempotency_key_y_reintento_devuelve_la_misma_cuenta(client, token_coordinacion):
+    sin_clave = client.post(REGISTER, json=NUEVA_CUENTA, headers=bearer(token_coordinacion))
+    assert sin_clave.status_code == 400
+    cabeceras = con_clave(token_coordinacion)
+    primera = client.post(REGISTER, json=NUEVA_CUENTA, headers=cabeceras)
+    repetida = client.post(REGISTER, json=NUEVA_CUENTA, headers=cabeceras)
+    assert (primera.status_code, repetida.status_code) == (201, 201)
+    assert repetida.json() == primera.json() and repetida.headers['location'] == primera.headers['location']
+    otra = client.post(REGISTER, json={**NUEVA_CUENTA, 'nombre_completo': 'Otra Persona'}, headers=cabeceras)
+    assert otra.status_code == 422 and otra.json()['codigo'] == 'IDEMPOTENCIA_CONFLICTO'
 
 
 def test_register_sin_token_responde_401(client):
@@ -100,41 +141,42 @@ def test_register_sin_token_responde_401(client):
 
 
 def test_RF_02_AC_9_register_con_rol_analista_responde_403(client, token_analista):
-    r = client.post(REGISTER, json=NUEVA_CUENTA, headers=bearer(token_analista))
+    r = client.post(REGISTER, json=NUEVA_CUENTA, headers=con_clave(token_analista))
     assert r.status_code == 403
     assert r.json()['codigo'] == 'ROL_NO_PERMITIDO'
 
 
 def test_RF_02_AC_2_rol_invalido_responde_422(client, token_coordinacion):
-    r = client.post(REGISTER, json={**NUEVA_CUENTA, 'rol': 'superadmin'}, headers=bearer(token_coordinacion))
+    r = client.post(REGISTER, json={**NUEVA_CUENTA, 'rol': 'superadmin'}, headers=con_clave(token_coordinacion))
     assert r.status_code == 422
     assert r.json()['detalles'][0]['campo'] == 'rol'
 
 
 def test_RF_02_AC_3_password_de_11_caracteres_responde_422(client, token_coordinacion):
     r = client.post(REGISTER, json={**NUEVA_CUENTA, 'password_temporal': 'x' * 11},
-                    headers=bearer(token_coordinacion))
+                    headers=con_clave(token_coordinacion))
     assert r.status_code == 422
     assert r.json()['detalles'][0]['campo'] == 'password_temporal'
 
 
-def test_register_password_mayor_a_72_bytes_responde_422_y_no_500(client, token_coordinacion):
-    r = client.post(REGISTER, json={**NUEVA_CUENTA, 'password_temporal': 'ñ' * 40},
-                    headers=bearer(token_coordinacion))
+def test_register_password_mayor_al_maximo_responde_422_y_no_500(client, token_coordinacion):
+    r = client.post(REGISTER, json={**NUEVA_CUENTA, 'password_temporal': 'ñ' * 129},
+                    headers=con_clave(token_coordinacion))
     assert r.status_code == 422
+    assert r.json()['detalles'][0]['campo'] == 'password_temporal'
 
 
 def test_register_correo_duplicado_responde_409(client, token_coordinacion):
-    client.post(REGISTER, json=NUEVA_CUENTA, headers=bearer(token_coordinacion))
+    client.post(REGISTER, json=NUEVA_CUENTA, headers=con_clave(token_coordinacion))
     r = client.post(REGISTER, json={**NUEVA_CUENTA, 'correo': NUEVA_CUENTA['correo'].upper()},
-                    headers=bearer(token_coordinacion))
+                    headers=con_clave(token_coordinacion))
     assert r.status_code == 409
     assert r.json()['codigo'] == 'CORREO_DUPLICADO'
 
 
 def test_register_rechaza_campos_extra_como_password_hash(client, token_coordinacion):
     r = client.post(REGISTER, json={**NUEVA_CUENTA, 'password_hash': 'x', 'debe_cambiar_password': False},
-                    headers=bearer(token_coordinacion))
+                    headers=con_clave(token_coordinacion))
     assert r.status_code == 422
 
 
@@ -239,4 +281,29 @@ def test_cambio_de_password_cierra_las_demas_sesiones(client, crear_cuenta, logi
 def test_cambio_de_password_exige_la_actual_correcta(client, token_analista):
     r = client.put('/api/v1/auth/password', headers=bearer(token_analista),
                    json={'password_actual': 'no-es-la-actual', 'password_nueva': 'una-clave-nueva-2026'})
+    assert r.status_code == 422
+
+
+def test_cambio_de_password_guarda_hash_argon2_y_la_nueva_sirve_para_iniciar_sesion(client, crear_cuenta, login, conn):
+    correo = crear_cuenta(hash_=_hash_bcrypt(PASSWORD))
+    r = client.put('/api/v1/auth/password', headers=bearer(login(correo)),
+                   json={'password_actual': PASSWORD, 'password_nueva': 'una-clave-nueva-2026'})
+    assert r.status_code == 204
+    guardado = conn.execute('SELECT password_hash FROM usuarios WHERE correo=%s', (correo,)).fetchone()[0]
+    assert guardado.startswith('$argon2id$')
+    assert client.post(LOGIN, json={'correo': correo, 'password': PASSWORD}).status_code == 401
+    assert client.post(LOGIN, json={'correo': correo, 'password': 'una-clave-nueva-2026'}).status_code == 200
+
+
+def test_cambio_de_password_rechaza_nueva_igual_a_la_actual_o_fuera_de_limites(client, token_analista):
+    for nueva, estado in ((PASSWORD, 422), ('corta', 422), ('x' * 129, 422)):
+        r = client.put('/api/v1/auth/password', headers=bearer(token_analista),
+                       json={'password_actual': PASSWORD, 'password_nueva': nueva})
+        assert r.status_code == estado, nueva[:12]
+
+
+def test_cambio_de_password_con_actual_mayor_a_72_bytes_y_hash_bcrypt_responde_422_y_no_500(client, crear_cuenta, login):
+    token = login(crear_cuenta(hash_=_hash_bcrypt(PASSWORD)))
+    r = client.put('/api/v1/auth/password', headers=bearer(token),
+                   json={'password_actual': 'x' * 100, 'password_nueva': 'una-clave-nueva-2026'})
     assert r.status_code == 422

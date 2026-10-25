@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Pruebas manuales de protección de rutas con curl (S05-S06-A2 Parte 2).
-# Requisitos: API en marcha y cuenta de coordinación creada con `python -m app.cli crear-coordinacion`.
-# Uso: COORD_PASSWORD='...' ./scripts/pruebas_manuales.sh [correo_coordinacion]
+# Requisitos: API en marcha y cuenta de coordinación creada con `python -m app.cli crear-coordinacion` (desde backend).
+# Uso: COORD_PASSWORD='...' ./pruebas_manuales.sh [correo_coordinacion]   (desde S05_S06_A2/pruebas)
+# En el backend integrado el registro exige Idempotency-Key (se genera una nueva en cada llamada).
 set -euo pipefail
 
 API="${API:-http://127.0.0.1:8000/api/v1}"
@@ -13,6 +14,7 @@ ANALISTA_TEMPORAL='Temporal-2026-xyz'
 ANALISTA_NUEVA='Analista-Nueva-2026'
 
 campo() { python3 -c "import json,sys; print(json.load(sys.stdin)$1)"; }
+clave() { python3 -c "import uuid; print(uuid.uuid4())"; }
 
 peticion() {  # peticion "titulo" curl-args... -> imprime método, URL, código y cuerpo
   local titulo="$1"; shift
@@ -31,7 +33,7 @@ TOKEN_COORD="$(curl -s "$API/auth/login" -H 'Content-Type: application/json' \
   -d "{\"correo\":\"$COORD_CORREO\",\"password\":\"$COORD_PASSWORD\"}" | campo "['access_token']")"
 
 peticion "Registro de analista por Coordinación (201, sin contraseña en la respuesta)" \
-  -X POST "$API/auth/register" -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN_COORD" \
+  -X POST "$API/auth/register" -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN_COORD" -H "Idempotency-Key: $(clave)" \
   -d "{\"nombre_completo\":\"Analista Prueba\",\"correo\":\"$ANALISTA_CORREO\",\"rol\":\"analista_sig\",\"password_temporal\":\"$ANALISTA_TEMPORAL\"}"
 
 TOKEN_ANALISTA="$(curl -s "$API/auth/login" -H 'Content-Type: application/json' \
@@ -64,7 +66,7 @@ peticion "CASO 4 - Ruta de Coordinación con token de Coordinación (200)" \
 peticion "EXTRA - Ruta de ambos roles con token de Analista SIG (200)" \
   "$API/alertas" -H "Authorization: Bearer $TOKEN_ANALISTA"
 peticion "EXTRA - Registro con token de Analista SIG (403)" \
-  -X POST "$API/auth/register" -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN_ANALISTA" \
+  -X POST "$API/auth/register" -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN_ANALISTA" -H "Idempotency-Key: $(clave)" \
   -d '{"nombre_completo":"X","correo":"x@ecoalert.pe","rol":"coordinacion","password_temporal":"Temporal-2026-xyz"}'
 peticion "EXTRA - Login con contraseña incorrecta (401 genérico)" \
   -X POST "$API/auth/login" -H 'Content-Type: application/json' \

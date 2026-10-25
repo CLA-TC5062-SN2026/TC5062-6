@@ -1,29 +1,33 @@
 """Hash de contraseñas y emisión/validación de JWT.
 
-- Contraseñas: bcrypt (costo 12) para hashes nuevos; los hashes Argon2id existentes se siguen
-  verificando y se migran a bcrypt en el siguiente inicio de sesión exitoso.
+- Contraseñas: Argon2id para los hashes nuevos (el mismo de las cuentas creadas por A1). Los hashes bcrypt
+  heredados se siguen verificando y se migran a Argon2id en el siguiente inicio de sesión exitoso.
 - JWT: HS256 con algoritmo fijo en la validación (RFC 8725 §3.1) y claims obligatorios.
 """
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import jwt
 from pwdlib import PasswordHash
+from pwdlib.exceptions import UnknownHashError
 from pwdlib.hashers.argon2 import Argon2Hasher
 from pwdlib.hashers.bcrypt import BcryptHasher
 
 from app.config import Settings
 
+logger = logging.getLogger(__name__)
+
 # bcrypt solo procesa 72 bytes; la librería lanza ValueError si se excede.
-MAX_BYTES_PASSWORD = 72
+MAX_BYTES_BCRYPT = 72
 ALGORITMO_JWT = 'HS256'
 CLAIMS_OBLIGATORIOS = ['exp', 'iat', 'nbf', 'iss', 'aud', 'sub', 'jti']
 
-hasher = PasswordHash((BcryptHasher(rounds=12), Argon2Hasher()))
-# Se verifica contra este hash cuando el correo no existe, para que el tiempo de respuesta
-# no revele qué cuentas existen (enumeración de usuarios, RF-01-AC-3).
+hasher = PasswordHash((Argon2Hasher(), BcryptHasher(rounds=12)))
+# Se verifica contra este hash cuando la cuenta no existe o su hash es ilegible, para que el tiempo
+# de respuesta no revele qué cuentas existen (enumeración de usuarios, RF-01-AC-3).
 _HASH_SENUELO = hasher.hash(secrets.token_urlsafe(32))
 
 
@@ -32,19 +36,18 @@ def hashear(password: str) -> str:
 
 
 def verificar(password: str, hash_guardado: str | None) -> tuple[bool, str | None]:
-    """Devuelve (válida, hash_nuevo). `hash_nuevo` no es None si conviene re-hashear con bcrypt.
+    """Devuelve (válida, hash_nuevo). `hash_nuevo` no es None si el hash debe migrarse a Argon2id.
 
-    Todas las ramas ejecutan una verificación completa, para que el tiempo de respuesta sea el mismo.
+    Un hash ausente, ilegible o incompatible con la longitud de la contraseña (bcrypt no admite más de
+    72 bytes) nunca es válido ni lanza una excepción: se ejecuta igualmente una verificación completa.
     """
-    excede = len(password.encode()) > MAX_BYTES_PASSWORD
-    if hash_guardado is None or (excede and not hash_guardado.startswith('$argon2')):
-        hasher.verify(password.encode()[:MAX_BYTES_PASSWORD], _HASH_SENUELO)
-        return False, None
-    if excede:
-        # Solo un hash Argon2 heredado puede corresponder a una contraseña tan larga,
-        # y no se puede migrar a bcrypt sin truncarla.
-        return hasher.verify(password, hash_guardado), None
-    return hasher.verify_and_update(password, hash_guardado)
+    if hash_guardado is not None and (len(password.encode()) <= MAX_BYTES_BCRYPT or hash_guardado.startswith('$argon2')):
+        try:
+            return hasher.verify_and_update(password, hash_guardado)
+        except (UnknownHashError, ValueError):
+            logger.warning('Una cuenta tiene un hash de contraseña ilegible; no puede iniciar sesión')
+    hasher.verify(password, _HASH_SENUELO)
+    return False, None
 
 
 def emitir_token(usuario_id: UUID, rol: str, cfg: Settings) -> tuple[str, UUID]:

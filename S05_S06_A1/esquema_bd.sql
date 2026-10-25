@@ -197,8 +197,8 @@ CREATE TABLE ajustes_prioridad (
  CHECK ((estado IN ('vigente','reemplazado') AND retirado_en IS NULL AND retirado_por IS NULL AND justificacion_retiro IS NULL)
      OR (estado = 'retirado' AND retirado_en IS NOT NULL AND retirado_por IS NOT NULL
          AND nullif(btrim(justificacion_retiro),'') IS NOT NULL AND retirado_en >= creado_en)),
- CHECK ((forma = 'por_puntaje' AND nivel_elegido IS NULL) OR
-        (forma = 'por_nivel' AND nivel_elegido IN ('alta','media','baja')))
+ CONSTRAINT ck_ajuste_forma_nivel CHECK ((forma = 'por_puntaje' AND nivel_elegido IS NULL) OR
+        (forma = 'por_nivel' AND nivel_elegido IS NOT NULL AND nivel_elegido IN ('alta','media','baja')))
 );
 CREATE UNIQUE INDEX uq_ajuste_vigente_zona ON ajustes_prioridad(zona_codigo) WHERE estado='vigente';
 CREATE INDEX ix_ajustes_zona_fecha ON ajustes_prioridad(zona_codigo,creado_en DESC);
@@ -225,24 +225,26 @@ CREATE TABLE marcas (
 );
 CREATE INDEX ix_marcas_zona_activa ON marcas(zona_codigo,activa);
 
--- Eventos auditables; autor se persiste como FK y puede exponerse como objeto UsuarioRef.
+-- Eventos auditables; autor_id es nulo solo en entradas del sistema (API: autor.tipo = 'sistema', RF-12-AC-19).
 CREATE TABLE entradas_historial (
  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
  zona_codigo VARCHAR(20) NOT NULL REFERENCES zonas_cambio(codigo) ON DELETE RESTRICT,
- tipo_accion TEXT NOT NULL CHECK (btrim(tipo_accion) <> ''),
+ tipo_accion TEXT NOT NULL CONSTRAINT ck_historial_tipo_accion CHECK (tipo_accion IN
+  ('zona_creada','cambio_estado','ajuste_fijado','ajuste_retirado','marca_registrada','marca_retirada')),
  fecha_hora TIMESTAMPTZ NOT NULL DEFAULT now(),
- autor_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE RESTRICT,
+ autor_id UUID REFERENCES usuarios(id) ON DELETE RESTRICT,
  codigo_alerta_origen TEXT,
  estado_anterior estado_zona,
  estado_nuevo estado_zona,
  ajuste_id UUID REFERENCES ajustes_prioridad(id) ON DELETE RESTRICT,
- forma TEXT,
+ forma TEXT CONSTRAINT ck_historial_forma CHECK (forma IN ('por_puntaje','por_nivel')),
  nivel_elegido nivel_vigente,
  puntaje_calculado SMALLINT CHECK (puntaje_calculado BETWEEN 0 AND 100),
  puntaje_ajustado SMALLINT CHECK (puntaje_ajustado BETWEEN 0 AND 100),
  marca_id UUID REFERENCES marcas(id) ON DELETE RESTRICT,
  texto_marca TEXT,
- texto TEXT
+ texto TEXT,
+ CONSTRAINT ck_historial_autor CHECK (autor_id IS NOT NULL OR tipo_accion = 'zona_creada')
 );
 CREATE INDEX ix_historial_zona_fecha ON entradas_historial(zona_codigo,fecha_hora DESC);
 
@@ -341,6 +343,18 @@ CREATE TABLE trabajos (
  CHECK (estado <> 'fallido' OR error IS NOT NULL)
 );
 CREATE INDEX ix_trabajos_estado_fecha ON trabajos(estado,creado_en);
+
+-- Idempotencia de los POST de creacion (cabecera Idempotency-Key, 24 h). Solo se guardan respuestas 2xx.
+CREATE TABLE claves_idempotencia (
+ clave UUID PRIMARY KEY,
+ operacion TEXT NOT NULL,
+ huella TEXT NOT NULL,
+ estado_http SMALLINT NOT NULL CHECK (estado_http BETWEEN 200 AND 299),
+ cuerpo_respuesta JSONB NOT NULL,
+ location TEXT NOT NULL,
+ creada_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_claves_idempotencia_creada ON claves_idempotencia(creada_en);
 
 -- Vistas/DTOs OpenAPI NO son tablas independientes:
 -- UsuarioRef, CredencialesLogin, SesionCreada, SesionActual, CambioPassword,

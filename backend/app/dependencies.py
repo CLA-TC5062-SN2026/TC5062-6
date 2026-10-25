@@ -13,7 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app import db
 from app.config import Settings, get_settings
-from app.errors import fail
+from app.errors import ApiError
 from app.security import decodificar_token, huella_token
 
 ANALISTA_SIG = 'analista_sig'
@@ -52,8 +52,8 @@ class Identidad:
 def _no_autenticado(con_token: bool):
     # RFC 6750 §3.1: sin credenciales no se incluye código de error; con token inválido, invalid_token.
     cabecera = f'{REALM}, error="invalid_token"' if con_token else REALM
-    fail(401, 'La sesión expiró o no es válida. Inicia sesión de nuevo.', 'NO_AUTENTICADO',
-         headers={'WWW-Authenticate': cabecera})
+    raise ApiError(401, 'NO_AUTENTICADO', 'La sesión expiró o no es válida. Inicia sesión de nuevo.',
+                   headers={'WWW-Authenticate': cabecera})
 
 
 def autenticar(credenciales: HTTPAuthorizationCredentials | None = Depends(_bearer),
@@ -83,9 +83,9 @@ class RequiereRol:
     def __call__(self, identidad: Identidad = Depends(autenticar)) -> Identidad:
         # El rol se evalúa primero: es una negativa permanente; el cambio de contraseña es remediable.
         if identidad.rol not in self.roles:
-            fail(403, 'Tu rol no permite realizar esta acción', 'ROL_NO_PERMITIDO')
+            raise ApiError(403, 'ROL_NO_PERMITIDO', 'Tu rol no permite realizar esta acción')
         if identidad.usuario['debe_cambiar_password']:
-            fail(403, 'Debes definir una contraseña nueva antes de continuar', 'CAMBIO_PASSWORD_REQUERIDO')
+            raise ApiError(403, 'CAMBIO_PASSWORD_REQUERIDO', 'Debes definir una contraseña nueva antes de continuar')
         return identidad
 
 

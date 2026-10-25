@@ -3,7 +3,7 @@
 title EcoAlert Tambopata — Arquitectura de contenedores consolidada (C4 nivel 2)
 left to right direction
 skinparam shadowing false
-skinparam linetype ortho
+skinparam linetype polyline
 skinparam componentStyle rectangle
 skinparam wrapWidth 210
 

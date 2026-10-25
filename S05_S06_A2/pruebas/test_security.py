@@ -10,8 +10,8 @@ import jwt
 import pytest
 
 from app.config import get_settings
-from app.security import decodificar_token, emitir_token, huella_token
-from tests.conftest import bearer
+from app.security import decodificar_token, emitir_token, hashear, huella_token, verificar
+from conftest import bearer
 
 
 @pytest.fixture
@@ -88,3 +88,41 @@ def test_token_expirado_con_sesion_registrada_responde_401(client, crear_cuenta,
     conn.execute('INSERT INTO sesiones (id, usuario_id, token_hash) VALUES (%s,%s,%s)',
                  (claims['jti'], usuario_id, huella_token(token)))
     assert client.get('/api/v1/auth/me', headers=bearer(token)).status_code == 401
+
+
+# --- Hash de contraseñas (Argon2id para las nuevas, bcrypt heredado verificable) ----------------
+
+CLAVE = 'clave-de-prueba-2026'
+
+
+def _bcrypt(password):
+    from pwdlib import PasswordHash
+    from pwdlib.hashers.bcrypt import BcryptHasher
+    return PasswordHash((BcryptHasher(rounds=4),)).hash(password)
+
+
+def test_hashear_usa_argon2id_y_se_verifica_sin_migrar():
+    guardado = hashear(CLAVE)
+    assert guardado.startswith('$argon2id$')
+    assert verificar(CLAVE, guardado) == (True, None)
+    assert verificar('otra-clave-equivocada', guardado) == (False, None)
+
+
+def test_hash_bcrypt_heredado_se_verifica_y_pide_migrar_a_argon2():
+    valida, nuevo = verificar(CLAVE, _bcrypt(CLAVE))
+    assert valida and nuevo.startswith('$argon2id$')
+    assert verificar(CLAVE, nuevo) == (True, None)
+
+
+def test_hash_bcrypt_con_password_de_mas_de_72_bytes_es_invalido_sin_excepcion():
+    assert verificar('x' * 100, _bcrypt(CLAVE)) == (False, None)
+
+
+def test_hash_argon2_admite_passwords_largas():
+    larga = 'x' * 128
+    assert verificar(larga, hashear(larga)) == (True, None)
+
+
+@pytest.mark.parametrize('guardado', [None, '', 'texto-que-no-es-un-hash', '$argon2id$basura', '$2b$12$corto'])
+def test_hash_ausente_o_ilegible_nunca_es_valido_ni_lanza_excepcion(guardado):
+    assert verificar(CLAVE, guardado) == (False, None)

@@ -1,6 +1,8 @@
 #!/bin/bash
-# Crea ecoalert_test con el mismo esquema: las pruebas automatizadas vacían sus tablas
-# y nunca deben tocar la base de datos de desarrollo.
+# Crea las bases de pruebas con el mismo esquema: ecoalert_test (A1; su suite carga una semilla y no borra datos) y
+# ecoalert_auth_test (A2; su suite vacía usuarios y sesiones antes de cada prueba). Nunca deben tocar la base de desarrollo.
 set -euo pipefail
-psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c 'CREATE DATABASE ecoalert_test'
-psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d ecoalert_test -f /docker-entrypoint-initdb.d/01_esquema.sql
+for base in ecoalert_test ecoalert_auth_test; do
+  psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "CREATE DATABASE $base"
+  psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$base" -f /docker-entrypoint-initdb.d/01_esquema.sql
+done

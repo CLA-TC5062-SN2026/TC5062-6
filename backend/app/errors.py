@@ -1,4 +1,4 @@
-"""Errores como Problem Details (RFC 9457) con los miembros `codigo` y `mensaje` del contrato."""
+"""Errores del contrato: application/problem+json (RFC 9457) con `codigo` y `mensaje` obligatorios."""
 import logging
 from http import HTTPStatus
 
@@ -9,67 +9,80 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger(__name__)
 
-PROBLEM_JSON = 'application/problem+json'
-CODIGOS = {
-    400: 'SOLICITUD_MAL_FORMADA',
-    401: 'NO_AUTENTICADO',
-    403: 'ROL_NO_PERMITIDO',
-    404: 'NO_ENCONTRADO',
-    405: 'METODO_NO_PERMITIDO',
-    409: 'CONFLICTO',
-    415: 'TIPO_CONTENIDO_NO_SOPORTADO',
-    422: 'VALIDACION',
-    500: 'ERROR_INTERNO',
-}
 
-
-class ErrorApi(Exception):
-    def __init__(self, status: int, codigo: str, mensaje: str, *, detalles=None, headers=None):
+class ApiError(Exception):
+    def __init__(self, status: int, codigo: str, mensaje: str, headers: dict | None = None):
         super().__init__(mensaje)
-        self.status, self.codigo, self.mensaje = status, codigo, mensaje
-        self.detalles, self.headers = detalles, headers
+        self.status, self.codigo, self.mensaje, self.headers = status, codigo, mensaje, headers
 
 
-def fail(status: int, mensaje: str, codigo: str | None = None, *, headers=None):
-    raise ErrorApi(status, codigo or CODIGOS.get(status, f'HTTP_{status}'), mensaje, headers=headers)
+def no_encontrado(mensaje: str) -> ApiError:
+    return ApiError(404, 'NO_ENCONTRADO', mensaje)
 
 
-def problema(status, codigo, mensaje, *, detalles=None, headers=None) -> JSONResponse:
+def encontrado(fila, mensaje: str):
+    if not fila:
+        raise no_encontrado(mensaje)
+    return fila
+
+
+def problema(status: int, codigo: str, mensaje: str, detalles=None, headers=None) -> JSONResponse:
     cuerpo = {'type': 'about:blank', 'title': HTTPStatus(status).phrase, 'status': status,
               'detail': mensaje, 'codigo': codigo, 'mensaje': mensaje}
     if detalles:
         cuerpo['detalles'] = detalles
-    return JSONResponse(cuerpo, status_code=status, headers=headers, media_type=PROBLEM_JSON)
+    return JSONResponse(cuerpo, status_code=status, media_type='application/problem+json', headers=headers)
 
 
-async def _error_api(request: Request, exc: ErrorApi):
-    return problema(exc.status, exc.codigo, exc.mensaje, detalles=exc.detalles, headers=exc.headers)
+_PLANTILLAS = {
+    'missing': 'Campo obligatorio',
+    'extra_forbidden': 'Campo no permitido',
+    'string_too_short': 'Debe tener al menos {min_length} caracteres',
+    'string_too_long': 'Debe tener como máximo {max_length} caracteres',
+    'greater_than_equal': 'Debe ser mayor o igual a {ge}',
+    'less_than_equal': 'Debe ser menor o igual a {le}',
+    'string_pattern_mismatch': 'No cumple el formato requerido',
+    'uuid_parsing': 'Debe ser un UUID válido',
+    'bool_parsing': 'Debe ser verdadero o falso',
+    'int_parsing': 'Debe ser un número entero',
+}
 
 
-async def _error_http(request: Request, exc: StarletteHTTPException):
-    # Rutas inexistentes (404) y métodos no expuestos (405, RF-02-AC-7) también salen en el formato del contrato.
-    mensaje = exc.detail if isinstance(exc.detail, str) else HTTPStatus(exc.status_code).phrase
-    return problema(exc.status_code, CODIGOS.get(exc.status_code, f'HTTP_{exc.status_code}'), mensaje,
-                    headers=getattr(exc, 'headers', None))
+def _mensaje(error: dict) -> str:
+    ctx = error.get('ctx', {})
+    if error['type'] == 'literal_error':
+        return 'Valores válidos: ' + ctx['expected'].replace("'", '').replace(' or ', ', ')
+    if error['type'] == 'value_error':
+        return str(ctx['error']) if 'error' in ctx else 'Correo electrónico no válido'
+    plantilla = _PLANTILLAS.get(error['type'])
+    return plantilla.format(**ctx) if plantilla else error['msg']
 
 
-async def _error_validacion(request: Request, exc: RequestValidationError):
-    errores = exc.errors()
-    if any(e['type'] == 'json_invalid' for e in errores):
-        return problema(400, CODIGOS[400], 'El cuerpo de la solicitud no es JSON válido')
-    # Solo ubicación y mensaje: nunca se devuelve el valor recibido (podría ser una contraseña).
-    detalles = [{'campo': '.'.join(map(str, e['loc'][1:] or e['loc'])), 'mensaje': e['msg']} for e in errores]
-    return problema(422, CODIGOS[422], 'La solicitud contiene datos no válidos', detalles=detalles)
+def registrar_errores(app: FastAPI) -> None:
+    @app.exception_handler(ApiError)
+    async def api_error(request: Request, exc: ApiError):
+        return problema(exc.status, exc.codigo, exc.mensaje, headers=exc.headers)
 
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(request: Request, exc: StarletteHTTPException):
+        codigo, mensaje = {404: ('NO_ENCONTRADO', 'La ruta solicitada no existe'),
+                           405: ('METODO_NO_PERMITIDO', 'Método no permitido para esta ruta')
+                           }.get(exc.status_code, ('ERROR_HTTP', str(exc.detail)))
+        return problema(exc.status_code, codigo, mensaje, headers=exc.headers)
 
-async def _error_inesperado(request: Request, exc: Exception):
-    # El detalle va al log del servidor, nunca al cliente (OWASP: manejo seguro de errores).
-    logger.exception('Error no controlado en %s %s', request.method, request.url.path)
-    return problema(500, CODIGOS[500], 'Ocurrió un error inesperado. Intenta de nuevo más tarde.')
+    # 400: JSON ilegible o parámetro (ruta, query, cabecera) inválido; 422: cuerpo legible que incumple el esquema.
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc: RequestValidationError):
+        errores = exc.errors()
+        if any(e['type'] == 'json_invalid' for e in errores):
+            return problema(400, 'SOLICITUD_MAL_FORMADA', 'El cuerpo de la solicitud no es JSON válido')
+        detalles = [{'campo': '.'.join(map(str, e['loc'][1:])) or 'cuerpo', 'mensaje': _mensaje(e)} for e in errores]
+        if all(e['loc'][0] != 'body' for e in errores):
+            return problema(400, 'SOLICITUD_MAL_FORMADA', 'Un parámetro de la solicitud no es válido', detalles)
+        return problema(422, 'VALIDACION', 'La solicitud contiene datos no válidos', detalles)
 
-
-def registrar_manejadores(app: FastAPI) -> None:
-    app.add_exception_handler(ErrorApi, _error_api)
-    app.add_exception_handler(StarletteHTTPException, _error_http)
-    app.add_exception_handler(RequestValidationError, _error_validacion)
-    app.add_exception_handler(Exception, _error_inesperado)
+    @app.exception_handler(Exception)
+    async def unexpected_error(request: Request, exc: Exception):
+        # El detalle va al log del servidor, nunca al cliente.
+        logger.exception('Error no controlado en %s %s', request.method, request.url.path)
+        return problema(500, 'ERROR_INTERNO', 'Ocurrió un error inesperado. Intenta de nuevo más tarde.')

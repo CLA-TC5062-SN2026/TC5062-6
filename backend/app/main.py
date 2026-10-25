@@ -1,6 +1,6 @@
-"""EcoAlert: API REST con autenticación JWT y control de acceso por rol.
+"""EcoAlert: API REST con autenticación JWT, control de acceso por rol y los servicios CRUD de S05-S06-A1.
 
-Implementa un subconjunto del contrato `openapi_equipo.yaml`; ver README para el alcance.
+Implementa un subconjunto del contrato integrado (backend/docs/openapi_integrado.yaml); ver README para el alcance.
 """
 from contextlib import asynccontextmanager
 
@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, FastAPI, Request
 from app import db
 from app.config import get_settings
 from app.dependencies import autenticar
-from app.errors import registrar_manejadores
+from app.errors import registrar_errores
 from app.routers import auth, consultas, usuarios
 
 PREFIJO_API = '/api/v1'
@@ -35,9 +35,9 @@ async def lifespan(app: FastAPI):
 def crear_app() -> FastAPI:
     cfg = get_settings()
     docs = {} if cfg.api_docs else {'docs_url': None, 'redoc_url': None, 'openapi_url': None}
-    app = FastAPI(title='EcoAlert Tambopata - API', version='0.2.0', lifespan=lifespan,
+    app = FastAPI(title='EcoAlert Tambopata - API', version='0.3.0', lifespan=lifespan,
                   description='Implementación parcial del contrato OpenAPI; ver README para límites.', **docs)
-    registrar_manejadores(app)
+    registrar_errores(app)
 
     @app.middleware('http')
     async def cabeceras_seguridad(request: Request, call_next):
