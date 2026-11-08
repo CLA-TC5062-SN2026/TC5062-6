@@ -2,19 +2,21 @@
 
 ## 1. Descripción del proyecto
 
-Frontend de **EcoAlert Tambopata**, desarrollado con React, Vite y Tailwind CSS v4 como parte de la actividad de generación de componentes frontend.
+Frontend de **EcoAlert Tambopata**, desarrollado con React, Vite y Tailwind CSS v4.
 
-La aplicación presenta un panel demostrativo de monitoreo ambiental que permite visualizar información general, consultar zonas de monitoreo y probar componentes reutilizables.
-
-La interfaz incluye estados de autenticación simulados, validación de formularios y estados de carga. Actualmente no requiere conexión con el backend para su funcionamiento.
+Desde S07-S08-A2 la aplicación está **integrada con el backend FastAPI** (`../backend`): inicia sesión con JWT,
+protege las rutas que requieren sesión y consulta las alertas de deforestación desde la API REST. Las decisiones de
+la capa de servicios están en [`S07_S08_A2/capa_servicios.md`](../S07_S08_A2/capa_servicios.md).
 
 ## 2. Tecnologías utilizadas
 
-- **React:** construcción de interfaces mediante componentes reutilizables.
-- **Vite:** entorno de desarrollo y compilación.
+- **React 19:** construcción de interfaces mediante componentes reutilizables.
+- **Vite 6:** entorno de desarrollo (con proxy hacia la API) y compilación.
 - **Tailwind CSS v4:** estilos y diseño responsivo.
-- **useState:** administración de estados locales.
-- **Context API:** alternativa prevista para compartir estados cuando la aplicación lo requiera.
+- **React Router 7:** rutas públicas (`/login`) y protegidas (`/dashboard`, `/alertas`).
+- **useState + Context API:** estado local y sesión compartida (`AuthContext`).
+- **fetch** nativo envuelto en un cliente con interceptores (`src/services/httpClient.js`).
+- **Vitest + Testing Library:** pruebas de la capa de servicios, la ruta protegida y la vista de alertas.
 
 ## 3. Requisitos
 
@@ -25,53 +27,49 @@ La interfaz incluye estados de autenticación simulados, validación de formular
 
 ## 4. Instalación y ejecución
 
-Desde la raíz del repositorio, ejecutar:
+1. Levantar el backend como indica [`backend/README.md`](../backend/README.md) (base de datos, `.env`, `uvicorn`).
+   Para tener datos que mostrar y una cuenta de prueba, desde `backend/`:
 
-```bash
-cd frontend
-npm install
-cp .env.example .env
-npm run dev
-```
+   ```bash
+   python -m scripts.sembrar_demo   # analista.demo@ecoalert.pe + 6 zonas + 24 alertas; pide la contraseña
+   ```
 
-Abrir la dirección indicada por Vite, normalmente:
+2. Desde la raíz del repositorio:
 
-`http://localhost:5173`
+   ```bash
+   cd frontend
+   npm install
+   cp .env.example .env
+   npm run dev
+   ```
+
+3. Abrir `http://localhost:5173` e iniciar sesión.
 
 ### Ejecución en GitHub Codespaces
 
-1. Abrir el repositorio en GitHub Codespaces.
-2. Ejecutar los comandos anteriores desde la terminal.
-3. Abrir la pestaña **Ports (Puertos)**.
-4. Localizar el puerto `5173`.
-5. Seleccionar **Open in Browser** para visualizar la aplicación.
-
-Para utilizar la interfaz demostrativa no es necesario iniciar el backend.
+1. Iniciar el backend en el puerto 8000 dentro del Codespace.
+2. Ejecutar los comandos anteriores; el proxy de Vite reenvía `/api` a `http://localhost:8000` del mismo contenedor.
+3. En la pestaña **Ports (Puertos)** abrir el puerto `5173` con **Open in Browser**. No hace falta publicar el 8000.
 
 ## 5. Estructura principal
 
 ```text
-frontend/
-├── src/
-│   ├── components/
-│   │   ├── Button.jsx
-│   │   ├── Input.jsx
-│   │   ├── Card.jsx
-│   │   └── Navbar.jsx
-│   ├── context/
-│   ├── pages/
-│   │   └── Inicio.jsx
-│   ├── services/
-│   │   └── api.js
-│   ├── App.jsx
-│   ├── main.jsx
-│   └── index.css
-├── .env.example
-├── .gitignore
-├── index.html
-├── package.json
-├── package-lock.json
-└── vite.config.js
+frontend/src/
+├── config/env.js              Lee VITE_API_URL y VITE_API_TIMEOUT_MS
+├── services/                  Capa de servicios: el único lugar que habla con la API
+│   ├── httpClient.js          fetch + interceptores + timeout + conversión de errores
+│   ├── api.js                 Instancia configurada: interceptor JWT e interceptor de 401
+│   ├── apiError.js            ApiError y tabla única de mensajes para el usuario
+│   ├── tokenStorage.js        JWT en sessionStorage + memoria, con expiración
+│   ├── authService.js         login, obtenerSesionActual (/auth/me), logout
+│   └── alertasService.js      listar (GET /alertas)
+├── context/AuthContext.jsx    Sesión compartida (usuario y estado de verificación)
+├── routes/ProtectedRoute.jsx  Redirige a /login sin sesión
+├── hooks/useApiQuery.js       Carga, error, reintento y cancelación de consultas
+├── pages/                     LoginPage, DashboardPage, AlertasPage, NotFoundPage
+├── components/                Button, Input, Card, Navbar, AppLayout, ErrorAlert, LoadingState
+├── test/                      Configuración y utilidades de pruebas
+└── App.jsx                    Definición de rutas
 ```
 
 ## 6. Componentes reutilizables
@@ -105,60 +103,44 @@ function Ejemplo() {
 }
 ```
 
-## 7. Funcionalidades de la interfaz demostrativa
+## 7. Funcionalidades
 
-La aplicación permite:
+| Ruta | Acceso | Qué hace |
+|---|---|---|
+| `/login` | Pública | Formulario con validación; llama a `authService.login()`, guarda el JWT y redirige a la ruta pedida o a `/dashboard`. |
+| `/dashboard` | Protegida | Datos de la sesión (correo, rol) y acceso a la consulta de alertas. |
+| `/alertas` | Protegida | `GET /api/v1/alertas` con estado de carga, error con reintento, filtros por zona y presencia, y paginación. |
+| `/` | — | Redirige a `/dashboard`. |
 
-- Visualizar el panel de monitoreo ambiental.
-- Ingresar una zona de monitoreo.
-- Mostrar un mensaje de validación cuando el campo está vacío.
-- Simular un proceso de consulta mediante un estado de carga.
-- Limpiar el formulario.
-- Alternar entre estados visuales de sesión iniciada y cerrada.
-- Visualizar tarjetas informativas sobre el monitoreo ambiental.
-
-**Nota:** las consultas y la autenticación son simulaciones de interfaz. No existe todavía una integración funcional con la API REST ni con un mecanismo real de autenticación.
+El botón **Cerrar sesión** revoca el token en el servidor (`POST /auth/logout`) y lo borra del navegador.
 
 ## 8. Variables de entorno
 
-El archivo `.env.example` contiene la configuración de referencia:
+Copiar `.env.example` a `.env` (no se versiona):
 
-```env
-VITE_API_URL=http://localhost:8000
-```
+| Variable | Llega al navegador | Valor por defecto | Uso |
+|---|---|---|---|
+| `VITE_API_URL` | Sí | `/api/v1` | URL base de la API, con el prefijo del contrato. Relativa: usa el proxy (dev) o Nginx (producción). |
+| `VITE_API_TIMEOUT_MS` | Sí | `15000` | Tiempo máximo de cada petición. |
+| `API_PROXY_TARGET` | **No** | `http://localhost:8000` | Destino del proxy de Vite para `/api`. Solo lo lee `vite.config.js`. |
 
-La variable `VITE_API_URL` define la dirección base prevista para la futura API REST desarrollada con FastAPI.
-
-Para utilizarla, copiar `.env.example` a `.env` y ajustar la dirección según el entorno.
-
-**Importante:**
-
-- El archivo `.env` no debe publicarse en GitHub.
-- Las variables `VITE_*` son accesibles desde el frontend y no deben contener contraseñas ni secretos.
-- Reiniciar Vite después de modificar las variables de entorno.
+- Las variables `VITE_*` se incrustan en el bundle: nunca deben contener secretos.
+- Reiniciar Vite después de modificar `.env`.
 
 ## 9. Verificación del funcionamiento
 
-Después de ejecutar `npm run dev`, comprobar:
-
-1. Vite inicia correctamente y muestra su dirección local.
-2. El navegador presenta el título **«Panel de monitoreo ambiental»**.
-3. Se visualiza la barra de navegación de EcoAlert Tambopata.
-4. Aparecen las tarjetas **«Consulta de zonas»**, **«Estado del monitoreo»** y **«Prueba de estado de carga»**.
-5. El formulario permite ingresar texto y muestra un error cuando se intenta consultar sin indicar una zona.
-6. Los botones **Consultar**, **Limpiar**, **Iniciar sesión** y **Cerrar sesión** funcionan según su comportamiento demostrativo.
-7. Los indicadores de carga se muestran correctamente.
-8. La consola del navegador no presenta errores de ejecución.
-
-### Compilación de producción
-
-Ejecutar:
-
 ```bash
-npm run build
+npm test          # 28 pruebas (Vitest + Testing Library)
+npm run build     # compilación de producción con Content-Security-Policy
 ```
 
-El comando debe finalizar sin errores y generar los archivos de distribución en `dist/`.
+Con backend y frontend en ejecución:
+
+1. Abrir `http://localhost:5173/dashboard` sin sesión → redirige a `/login`.
+2. Credenciales incorrectas → "Usuario o contraseña incorrectos".
+3. Credenciales correctas → redirige a `/dashboard`.
+4. Entrar a **Alertas** → indicador de carga y, después, la tabla con datos del backend.
+5. Detener el backend y pulsar **Buscar** → mensaje "No se pudo conectar con el servidor…" con botón **Reintentar**.
 
 ## 10. Accesibilidad
 
@@ -175,13 +157,10 @@ Se realizaron mejoras en los componentes para facilitar su utilización y compre
 
 La revisión documentada no constituye una certificación integral de conformidad con WCAG 2.1.
 
-## 11. Documentación de la actividad
+## 11. Documentación de las actividades
 
-Los documentos correspondientes a la actividad se organizan en la carpeta `S07_S08_A1/`, ubicada en la raíz del repositorio:
-
-- `decision_stack_frontend.md`: selección y justificación de tecnologías.
-- `revision_componentes.md`: revisión de la propuesta inicial del agente de IA y modificaciones del equipo.
-- `accesibilidad.md`: resultados de las pruebas, observaciones y adecuaciones de accesibilidad.
+- `S07_S08_A1/`: `decision_stack_frontend.md`, `revision_componentes.md`, `accesibilidad.md`, `scaffolding.mp4`.
+- `S07_S08_A2/`: `capa_servicios.md` (decisiones de la capa de servicios), `flujo_auth.mp4` y `flujo_e2e.mp4`.
 
 ## 12. Evidencia de scaffolding
 
