@@ -50,6 +50,8 @@ docker compose ps   # espera (healthy)
 python -m app.cli crear-coordinacion --nombre "Coordinación Demo" --correo coordinacion@ecoalert.pe
 ```
 
+   *Opcional, para probar el frontend (S07-S08-A2):* `python -m scripts.sembrar_demo` crea la cuenta `analista.demo@ecoalert.pe` (pide la contraseña), 6 zonas y 24 alertas en la base de desarrollo, porque la ingesta todavía no está implementada. Es idempotente y no se ejecuta contra hosts remotos ni bases `*_test`.
+
 4. **Servidor** (`--env-file` carga `.env`, incluido `IDEMPOTENCY_SECRET`):
 
 ```powershell
