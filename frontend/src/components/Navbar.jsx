@@ -1,9 +1,20 @@
 
+import { NavLink } from "react-router-dom";
 import Button from "./Button";
+
+const linkStyles = `
+  rounded px-2 py-1
+  hover:underline
+  focus-visible:outline
+  focus-visible:outline-2
+  focus-visible:outline-offset-2
+  focus-visible:outline-white
+`;
 
 export default function Navbar({
   isAuthenticated = false,
   userName = "Usuario",
+  links = [],
   onLogin,
   onLogout,
 }) {
@@ -29,20 +40,18 @@ export default function Navbar({
             gap-3 sm:gap-4
           "
         >
-          <a
-            href="/"
-            aria-current="page"
-            className="
-              rounded px-2 py-1
-              hover:underline
-              focus-visible:outline
-              focus-visible:outline-2
-              focus-visible:outline-offset-2
-              focus-visible:outline-white
-            "
-          >
-            Inicio
-          </a>
+          {/* NavLink marca aria-current="page" en el enlace de la ruta activa. */}
+          {links.map((link) => (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              className={({ isActive }) =>
+                `${linkStyles} ${isActive ? "font-semibold underline" : ""}`
+              }
+            >
+              {link.label}
+            </NavLink>
+          ))}
 
           {isAuthenticated ? (
             <>
@@ -58,12 +67,14 @@ export default function Navbar({
               </Button>
             </>
           ) : (
-            <Button
-              variant="secondary"
-              onClick={onLogin}
-            >
-              Iniciar sesión
-            </Button>
+            onLogin && (
+              <Button
+                variant="secondary"
+                onClick={onLogin}
+              >
+                Iniciar sesión
+              </Button>
+            )
           )}
         </div>
       </div>
