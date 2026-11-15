@@ -11,6 +11,7 @@ import os
 import re
 import uuid
 
+import psycopg
 import pytest
 
 USUARIOS = '/api/v1/usuarios'
@@ -169,6 +170,20 @@ def test_patch_parcial_conserva_lo_no_enviado(api, bd, conforme, crear_usuario):
     conforme('Usuario', p.json)
     assert p.json == {**r.json, 'activo': False}
     assert bd('SELECT activo FROM usuarios WHERE id = %s', (r.json['id'],))[0][0] is False
+
+
+def test_patch_solo_nombre_no_espera_bloqueo_de_otra_coordinacion(api, url_bd, crear_usuario):
+    usuario = crear_usuario()[0].json
+    with psycopg.connect(url_bd) as conexion:
+        conexion.execute('SELECT id FROM usuarios WHERE id=%s FOR UPDATE', (api.id,))
+        with cf.ThreadPoolExecutor(1) as pool:
+            futuro = pool.submit(enviar, api, 'PATCH', usuario['id'], {'nombre_completo': 'Nuevo Nombre'})
+            try:
+                respuesta = futuro.result(timeout=10)
+            finally:
+                conexion.rollback()
+    assert respuesta.estado == 200
+    assert respuesta.json['nombre_completo'] == 'Nuevo Nombre'
 
 
 def test_patch_exige_merge_patch_y_rechaza_vacio_o_nulo(api, conforme, crear_usuario):

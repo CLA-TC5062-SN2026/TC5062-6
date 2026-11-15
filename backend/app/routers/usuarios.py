@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request, Response
 from fastapi.responses import JSONResponse
+from psycopg import sql
 from psycopg.errors import UniqueViolation
 
 from app import db
@@ -39,7 +40,9 @@ def insertar_usuario(body: UsuarioCrear, request: Request, response: Response, c
                                   f'VALUES (%s, %s, %s, %s) RETURNING {USER_FIELDS}',
                             (body.nombre_completo, str(body.correo), body.rol, hashear(body.password_temporal)),
                             one=True)
-        except UniqueViolation:
+        except UniqueViolation as exc:
+            if exc.diag.constraint_name != 'uq_usuarios_correo_ci':
+                raise
             raise ApiError(409, 'CORREO_DUPLICADO', 'Ya existe una cuenta con ese correo') from None
         usuario = Usuario(**fila)
         location = request.app.url_path_for('obtener_usuario', usuarioId=usuario.id)
@@ -68,9 +71,19 @@ def obtener_usuario(usuarioId: UUID):
 
 def aplicar_cambios(usuarioId: UUID, cambios: dict):
     """Actualización transaccional de una cuenta, compartida por PUT y PATCH."""
+    if not cambios or not cambios.keys() <= (
+        UsuarioActualizar.model_fields.keys()
+    ):
+        raise ValueError(
+            'Los cambios deben contener únicamente campos editables'
+        )
     with db.transaction() as conn:
-        # Se bloquean las cuentas de coordinación activas para que dos cambios simultáneos no dejen el sistema sin ninguna.
-        coordinacion = db.query(conn, "SELECT id FROM usuarios WHERE rol='coordinacion' AND activo ORDER BY id FOR UPDATE")
+        coordinacion = []
+        if set(cambios) != {'nombre_completo'}:
+            # Los cambios de rol o estado conservan el orden de bloqueo.
+            coordinacion = db.query(
+                conn, "SELECT id FROM usuarios WHERE rol='coordinacion' "
+                      "AND activo ORDER BY id FOR UPDATE")
         actual = encontrado(db.query(conn, 'SELECT rol, activo FROM usuarios WHERE id=%s FOR UPDATE', (usuarioId,), one=True),
                             f'No existe el usuario {usuarioId}')
         desactiva = cambios.get('activo') is False
@@ -78,9 +91,12 @@ def aplicar_cambios(usuarioId: UUID, cambios: dict):
         if actual['rol'] == 'coordinacion' and actual['activo'] and len(coordinacion) == 1 and (desactiva or quita_rol):
             accion = 'desactivar' if desactiva else 'quitar el rol a'
             raise ApiError(409, 'ULTIMA_COORDINACION', f'No se puede {accion} la última cuenta de coordinación')
-        # Los nombres de columna provienen del esquema (extra='forbid'), nunca del cliente.
-        asignaciones = ', '.join(f'{campo}=%s' for campo in cambios)
-        fila = db.query(conn, f'UPDATE usuarios SET {asignaciones} WHERE id=%s RETURNING {USER_FIELDS}',
+        asignaciones = sql.SQL(', ').join(
+            sql.SQL('{}=%s').format(sql.Identifier(campo)) for campo in cambios)
+        sentencia = sql.SQL(
+            'UPDATE usuarios SET {} WHERE id=%s RETURNING {}'
+        ).format(asignaciones, sql.SQL(USER_FIELDS))
+        fila = db.query(conn, sentencia,
                         (*cambios.values(), usuarioId), one=True)
         if desactiva:
             db.query(conn, 'UPDATE sesiones SET revocada_en = now() WHERE usuario_id=%s AND revocada_en IS NULL',
