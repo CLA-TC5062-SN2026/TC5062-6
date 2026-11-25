@@ -56,10 +56,10 @@ describe('UsuariosPage (RF-02)', () => {
     const usuario = userEvent.setup();
     renderizarEn('/usuarios');
 
-    expect(await screen.findByRole('cell', { name: 'ana.quispe@ecoalert.pe' })).toBeInTheDocument();
+    expect(await screen.findByText('ana.quispe@ecoalert.pe')).toBeInTheDocument();
     expect(screen.getByText('(tu cuenta)')).toBeInTheDocument();
 
-    await usuario.selectOptions(screen.getByLabelText('Estado'), 'false');
+    await usuario.click(screen.getByRole('button', { name: 'Desactivadas' }));
     await vi.waitFor(() => expect(fetchMock.mock.calls.at(-1)[0]).toBe('/api/v1/usuarios?activo=false'));
   });
 
@@ -75,15 +75,17 @@ describe('UsuariosPage (RF-02)', () => {
     vi.stubGlobal('fetch', fetchMock);
     const usuario = userEvent.setup();
     renderizarEn('/usuarios');
-    await screen.findByRole('cell', { name: 'coordinacion@ecoalert.pe' });
+    await screen.findByText('coordinacion@ecoalert.pe');
 
+    await usuario.click(screen.getByRole('button', { name: 'Nueva cuenta' }));
     await usuario.type(screen.getByLabelText('Nombre completo'), 'Luis Condori');
     await usuario.type(screen.getByLabelText('Correo'), 'luis.condori@ecoalert.pe');
     await usuario.type(screen.getByLabelText('Contraseña temporal'), 'Temporal-2026!');
     await usuario.click(screen.getByRole('button', { name: 'Crear cuenta' }));
 
     expect(await screen.findByText(/Cuenta creada para Luis Condori/)).toBeInTheDocument();
-    expect(await screen.findByRole('cell', { name: 'luis.condori@ecoalert.pe' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Nombre completo')).not.toBeInTheDocument();
+    expect(await screen.findByText('luis.condori@ecoalert.pe')).toBeInTheDocument();
 
     const [, init] = fetchMock.mock.calls.find(([, i]) => i.method === 'POST');
     expect(init.headers.get('Idempotency-Key')).toMatch(/^[0-9a-f-]{36}$/);
@@ -100,8 +102,9 @@ describe('UsuariosPage (RF-02)', () => {
     vi.stubGlobal('fetch', fetchMock);
     const usuario = userEvent.setup();
     renderizarEn('/usuarios');
-    await screen.findByRole('cell', { name: 'coordinacion@ecoalert.pe' });
+    await screen.findByText('coordinacion@ecoalert.pe');
 
+    await usuario.click(screen.getByRole('button', { name: 'Nueva cuenta' }));
     await usuario.type(screen.getByLabelText('Nombre completo'), 'Luis Condori');
     await usuario.type(screen.getByLabelText('Correo'), 'luis.condori@ecoalert.pe');
     await usuario.type(screen.getByLabelText('Contraseña temporal'), '12345678901');
@@ -120,10 +123,10 @@ describe('UsuariosPage (RF-02)', () => {
     vi.stubGlobal('fetch', fetchMock);
     const usuario = userEvent.setup();
     renderizarEn('/usuarios');
-    await screen.findByRole('cell', { name: 'coordinacion@ecoalert.pe' });
+    await screen.findByText('coordinacion@ecoalert.pe');
 
     await usuario.click(screen.getByRole('button', { name: 'Desactivar coordinacion@ecoalert.pe' }));
-    await usuario.click(screen.getByRole('button', { name: 'Confirmar: desactivar coordinacion@ecoalert.pe' }));
+    await usuario.click(screen.getByRole('button', { name: 'Desactivar cuenta de coordinacion@ecoalert.pe' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('No se puede desactivar la última cuenta de coordinación');
     const [, init] = fetchMock.mock.calls.find(([, i]) => i.method === 'PATCH');
@@ -143,7 +146,7 @@ describe('UsuariosPage (RF-02)', () => {
     vi.stubGlobal('fetch', fetchMock);
     const usuario = userEvent.setup();
     renderizarEn('/usuarios');
-    await screen.findByRole('cell', { name: 'ana.quispe@ecoalert.pe' });
+    await screen.findByText('ana.quispe@ecoalert.pe');
 
     await usuario.click(screen.getByRole('button', { name: 'Editar ana.quispe@ecoalert.pe' }));
     await usuario.selectOptions(screen.getByLabelText('Rol de ana.quispe@ecoalert.pe'), 'coordinacion');
@@ -152,7 +155,7 @@ describe('UsuariosPage (RF-02)', () => {
     expect(await screen.findByText('Cuenta de Ana Quispe Mamani actualizada.')).toBeInTheDocument();
     const [, init] = fetchMock.mock.calls.find(([, i]) => i.method === 'PATCH');
     expect(JSON.parse(init.body)).toEqual({ rol: 'coordinacion' });
-    const fila = screen.getByRole('cell', { name: 'ana.quispe@ecoalert.pe' }).closest('tr');
+    const fila = screen.getByText('ana.quispe@ecoalert.pe').closest('tr');
     expect(within(fila).getByText('Coordinación')).toBeInTheDocument();
   });
 

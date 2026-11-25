@@ -45,7 +45,7 @@ describe('CambiarPasswordPage (RF-02-AC-4)', () => {
     await usuario.click(await screen.findByRole('link', { name: 'Cambiar mi contraseña' }));
     await completar(usuario, { actual: 'Temporal-2026!', nueva: 'Mi-clave-propia-2026' });
 
-    expect(await screen.findByRole('heading', { name: 'Panel de monitoreo ambiental' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Panel' })).toBeInTheDocument();
     expect(screen.queryByText(/contraseña temporal/)).not.toBeInTheDocument();
     const [, init] = fetchMock.mock.calls.find(([, i]) => i.method === 'PUT');
     expect(JSON.parse(init.body)).toEqual({ password_actual: 'Temporal-2026!', password_nueva: 'Mi-clave-propia-2026' });

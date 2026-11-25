@@ -7,7 +7,7 @@
 ✓ validación de contraseña temporal en el cliente
 ✓ cuenta creada (Create)
 ✓ nombre actualizado (Update, PATCH)
-  · 409 PATCH http://localhost:5174/api/v1/usuarios/46f8e8b8-667e-44f7-8b35-1c6eb16970f0
+  · 409 PATCH http://localhost:5174/api/v1/usuarios/bb93c525-621a-4414-aae5-36da5f143c38
 ✓ 409 ULTIMA_COORDINACION mostrado
 ✓ analista con contraseña temporal: aviso y sin menú Usuarios
 ✓ contraseña propia definida (RF-02-AC-4)

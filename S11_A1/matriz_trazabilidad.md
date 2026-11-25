@@ -7,7 +7,7 @@
 | Requerimientos | [`S03_A1/SRS_equipo.md`](../S03_A1/SRS_equipo.md), línea base v1.0: 39 RF (17 Must, 13 Should, 9 Could) |
 | Historias de usuario | [`S03_A1/backlog_completo.md`](../S03_A1/backlog_completo.md): 15 HU en 5 épicas |
 | Endpoints | [`backend/docs/openapi_integrado.yaml`](../backend/docs/openapi_integrado.yaml) v1.3.0: 39 operaciones, 20 implementadas |
-| Pruebas | `backend/tests/` y `S05_S06_A2/pruebas/` (pytest, **234/234**), `frontend/src/**/*.test.*` (Vitest, **39/39**), E2E [`evidencias/flujo_e2e.cjs`](evidencias/flujo_e2e.cjs) (Playwright) |
+| Pruebas | `backend/tests/` y `S05_S06_A2/pruebas/` (pytest, **234/234**), `frontend/src/**/*.test.*` (Vitest, **45/45**), E2E [`evidencias/flujo_e2e.cjs`](evidencias/flujo_e2e.cjs) (Playwright) |
 | Corte | Rama `feat/S11_A1-documentacion-final`, 24/11/2026. Cada resultado se reprodujo en esa fecha; las salidas están en [`evidencias/`](evidencias/). |
 
 ## 1. Cómo se clasificó cada requerimiento

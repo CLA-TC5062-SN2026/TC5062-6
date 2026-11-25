@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import Button from '../components/Button.jsx';
-import Card from '../components/Card.jsx';
 import ErrorAlert from '../components/ErrorAlert.jsx';
 import Input from '../components/Input.jsx';
+import Marca from '../components/Marca.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 
 const RUTA_INICIAL = '/dashboard';
@@ -37,6 +37,7 @@ export default function LoginPage() {
   const [errores, setErrores] = useState({});
   const [errorServidor, setErrorServidor] = useState(null);
   const [enviando, setEnviando] = useState(false);
+  const [verPassword, setVerPassword] = useState(false);
 
   if (estaAutenticado && !enviando) {
     return <Navigate to={rutaDeRetorno(location.state)} replace />;
@@ -66,51 +67,108 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-100 px-4 py-12">
-      <div className="w-full max-w-md">
-        <p className="mb-2 text-center text-sm font-semibold uppercase tracking-widest text-green-800">
-          EcoAlert Tambopata
-        </p>
-        <Card title="Iniciar sesión" headingLevel={1}>
-          <form noValidate onSubmit={enviar} className="flex flex-col gap-4" aria-describedby="aviso-login">
-            <div id="aviso-login" className="flex flex-col gap-3">
-              {aviso && !errorServidor && (
-                <ErrorAlert titulo="Tu sesión terminó" mensaje={aviso} />
-              )}
-              <ErrorAlert titulo="No se pudo iniciar sesión" mensaje={errorServidor} />
-            </div>
+    <main className="flex min-h-screen flex-wrap bg-papel">
+      <PortadaCartografica />
 
-            <Input
-              label="Correo electrónico"
-              type="email"
-              name="correo"
-              autoComplete="username"
-              inputMode="email"
-              value={form.correo}
-              onChange={actualizar('correo')}
-              placeholder="nombre@ecoalert.pe"
-              error={errores.correo}
-              required
-            />
+      <section className="flex flex-[1_1_420px] items-center justify-center px-6 py-12">
+        <form noValidate onSubmit={enviar} className="flex w-full max-w-sm flex-col gap-5" aria-describedby="aviso-login">
+          <h1 className="ancho-titulo text-3xl leading-tight font-bold">Iniciar sesión</h1>
 
-            <Input
-              label="Contraseña"
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              value={form.password}
-              onChange={actualizar('password')}
-              error={errores.password}
-              maxLength={MAX_PASSWORD}
-              required
-            />
+          <div id="aviso-login" className="flex flex-col gap-3 empty:hidden">
+            {aviso && !errorServidor && <ErrorAlert titulo="Tu sesión terminó" mensaje={aviso} />}
+            <ErrorAlert titulo="No se pudo iniciar sesión" mensaje={errorServidor} />
+          </div>
 
-            <Button type="submit" loading={enviando}>
-              Ingresar
-            </Button>
-          </form>
-        </Card>
-      </div>
+          <Input
+            label="Correo electrónico"
+            type="email"
+            name="correo"
+            autoComplete="username"
+            inputMode="email"
+            value={form.correo}
+            onChange={actualizar('correo')}
+            placeholder="nombre@ecoalert.pe"
+            error={errores.correo}
+            required
+          />
+
+          <Input
+            label="Contraseña"
+            type={verPassword ? 'text' : 'password'}
+            name="password"
+            autoComplete="current-password"
+            value={form.password}
+            onChange={actualizar('password')}
+            error={errores.password}
+            maxLength={MAX_PASSWORD}
+            required
+            sufijo={
+              <button
+                type="button"
+                onClick={() => setVerPassword((visible) => !visible)}
+                aria-label={verPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                className="h-full rounded px-3.5 text-sm font-semibold text-dosel hover:bg-dosel-tenue"
+              >
+                {verPassword ? 'Ocultar' : 'Mostrar'}
+              </button>
+            }
+          />
+
+          <Button type="submit" loading={enviando} className="min-h-12 text-base">
+            Ingresar
+          </Button>
+
+          <p className="text-sm text-tinta-suave">¿Sin cuenta? Pídela a Coordinación.</p>
+        </form>
+      </section>
     </main>
   );
 }
+
+/** Portada tipo hoja de mapa: curvas de nivel sobre verde dosel y un recuadro de título con doble marco. */
+function PortadaCartografica() {
+  return (
+    <section className="relative flex flex-[1_1_520px] flex-col justify-end overflow-hidden bg-dosel p-6 max-sm:min-h-72 sm:p-10">
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 800 860"
+        preserveAspectRatio="xMidYMid slice"
+        className="absolute inset-0 h-full w-full"
+        fill="none"
+        stroke="#3e7259"
+        strokeWidth="1.4"
+      >
+        {CURVAS_DE_NIVEL.map((d) => (
+          <path key={d} d={d} />
+        ))}
+      </svg>
+      <div className="relative max-w-md self-start border border-tinta bg-papel p-1.5">
+        <div className="flex flex-col gap-3 border border-linea-fuerte px-7 py-6">
+          <p className="flex items-center gap-3">
+            <Marca tamano={34} />
+            <span className="ancho-titulo text-3xl leading-none font-extrabold [font-stretch:120%]">EcoAlert</span>
+          </p>
+          <p className="text-[17px] leading-snug font-medium text-balance">
+            Alertas de pérdida de bosque en la Reserva Nacional Tambopata, agrupadas por zona de cambio.
+          </p>
+          <p className="text-[13px] text-tinta-suave">Madre de Dios, Perú. Alertas de GeoBosques.</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Curvas de nivel decorativas (no representan un relieve real).
+const CURVAS_DE_NIVEL = [
+  'M-20 140c120-40 230 10 330-20s190-110 300-80 160 70 210 60',
+  'M-20 190c130-36 230 16 336-12s196-100 300-70 150 66 204 60',
+  'M-20 240c140-30 236 20 342-4s200-92 300-62 146 62 198 60',
+  'M-20 300c150-22 240 26 350 6s204-80 300-52 140 58 190 60',
+  'M360 430c70-40 170-30 200 30s-20 130-110 140-170-30-170-90 20-60 80-80z',
+  'M384 450c52-28 124-20 146 22s-16 96-80 104-124-22-124-66 14-44 58-60z',
+  'M408 470c34-18 80-12 94 14s-10 60-52 66-80-14-80-42 10-28 38-38z',
+  'M-20 620c110 20 200-30 290-10s150 90 250 90 200-60 300-50',
+  'M-20 680c120 22 206-22 296-4s156 84 252 84 196-54 292-44',
+  'M-20 740c130 24 212-14 302 2s162 78 254 78 192-48 284-38',
+  'M-20 800c140 26 218-6 308 8s168 72 256 72 188-42 276-32',
+];

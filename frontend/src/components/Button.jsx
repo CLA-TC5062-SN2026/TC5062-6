@@ -1,54 +1,46 @@
+// Botón del sistema visual. Variantes por intención, no por color:
+// primary = acción principal, secondary = alternativa neutra, texto = acción de fila, peligro = acción destructiva.
+
+const BASE = `
+  inline-flex min-h-11 items-center justify-center gap-2
+  rounded px-4 font-semibold
+  transition-colors motion-reduce:transition-none
+  disabled:cursor-not-allowed disabled:opacity-60
+`;
+
+const VARIANTES = {
+  primary: 'bg-dosel text-white hover:bg-dosel-oscuro',
+  secondary: 'border border-linea-fuerte bg-white text-tinta hover:bg-papel',
+  texto: 'px-3 text-dosel hover:bg-dosel-tenue',
+  peligro: 'bg-peligro text-white hover:bg-peligro-texto',
+};
 
 export default function Button({
   children,
-  variant = "primary",
+  variant = 'primary',
   loading = false,
   disabled = false,
   onClick,
-  type = "button",
+  type = 'button',
+  className = '',
   ...props
 }) {
-  const baseStyles = `
-    inline-flex items-center justify-center gap-2
-    rounded-md px-4 py-2 font-medium
-    transition-colors
-    focus-visible:outline
-    focus-visible:outline-2
-    focus-visible:outline-offset-2
-    focus-visible:outline-green-800
-    disabled:cursor-not-allowed
-    disabled:cursor-not-allowed
-  `;
-
-  const variants = {
-    primary:
-      "bg-green-700 text-white hover:bg-green-800",
-    secondary:
-      "bg-gray-200 text-gray-800 hover:bg-gray-300",
-  };
-
   return (
     <button
       type={type}
       onClick={onClick}
       disabled={disabled || loading}
       aria-busy={loading}
-      className={`${baseStyles} ${variants[variant]}`}
+      className={`${BASE} ${VARIANTES[variant] ?? VARIANTES.primary} ${className}`}
       {...props}
     >
       {loading && (
         <span
           aria-hidden="true"
-          className="
-            h-4 w-4 animate-spin rounded-full
-            border-2 border-current
-            border-t-transparent
-          "
+          className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
         />
       )}
-
-      {loading ? "Cargando..." : children}
+      {loading ? 'Cargando...' : children}
     </button>
   );
 }
-

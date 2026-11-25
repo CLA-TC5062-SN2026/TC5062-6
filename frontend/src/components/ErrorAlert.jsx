@@ -6,9 +6,9 @@ import Button from './Button.jsx';
 export default function ErrorAlert({ titulo = 'No se pudo completar la operación', mensaje, onReintentar }) {
   if (!mensaje) return null;
   return (
-    <div role="alert" className="rounded-md border border-red-300 bg-red-50 p-4 text-red-900">
+    <div role="alert" className="border-l-4 border-peligro bg-peligro-tenue px-4 py-3 text-peligro-texto">
       <p className="font-semibold">{titulo}</p>
-      <p className="mt-1 text-sm">{mensaje}</p>
+      <p className="mt-0.5">{mensaje}</p>
       {onReintentar && (
         <div className="mt-3">
           <Button variant="secondary" onClick={onReintentar}>

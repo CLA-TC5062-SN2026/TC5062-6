@@ -1,4 +1,4 @@
-// Estructura común de las vistas autenticadas: barra de navegación y contenido de la ruta activa.
+// Estructura común de las vistas autenticadas: barra superior y contenido de la ruta activa.
 
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -11,6 +11,11 @@ const ENLACES = [
 // RF-02-AC-10: la gestión de usuarios solo aparece en el menú de Coordinación (el backend responde 403 al resto).
 const ENLACES_COORDINACION = [{ to: '/usuarios', label: 'Usuarios' }];
 
+const ROLES = {
+  analista_sig: 'Analista SIG',
+  coordinacion: 'Coordinación',
+};
+
 export default function AppLayout() {
   const { usuario, logout } = useAuth();
   const navigate = useNavigate();
@@ -21,14 +26,15 @@ export default function AppLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-papel">
       <Navbar
         isAuthenticated
         userName={usuario?.nombre_completo}
+        userRole={ROLES[usuario?.rol] ?? ''}
         links={usuario?.rol === 'coordinacion' ? [...ENLACES, ...ENLACES_COORDINACION] : ENLACES}
         onLogout={cerrarSesion}
       />
-      <main id="contenido" className="mx-auto max-w-5xl px-4 py-8">
+      <main id="contenido" className="mx-auto flex max-w-6xl flex-col gap-6 px-4 pt-9 pb-16 sm:px-8">
         <Outlet />
       </main>
     </div>

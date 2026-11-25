@@ -54,7 +54,8 @@ const PROPIA = 'Jorge-Propia-2026!';
 
   // 3. Login de Coordinación
   await login('coordinacion@ecoalert.pe', pw);
-  await page.getByRole('heading', { name: 'Panel de monitoreo ambiental' }).waitFor();
+  await page.getByRole('heading', { name: 'Panel', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Zonas por superficie alertada' }).waitFor();
   paso('login de Coordinación');
   await foto('02-panel-coordinacion');
 
@@ -66,9 +67,10 @@ const PROPIA = 'Jorge-Propia-2026!';
 
   // 5. CRUD de usuarios
   await page.getByRole('link', { name: 'Usuarios', exact: true }).click();
-  await page.getByRole('cell', { name: 'analista.demo@ecoalert.pe', exact: true }).waitFor();
+  await page.getByText('analista.demo@ecoalert.pe', { exact: true }).waitFor();
   paso('lista de usuarios (Read)');
 
+  await page.getByRole('button', { name: 'Nueva cuenta' }).click();
   await page.getByLabel('Nombre completo').fill(NUEVO.nombre);
   await page.getByLabel('Correo', { exact: true }).fill(NUEVO.correo);
   await page.getByLabel('Contraseña temporal').fill('corta');
@@ -78,7 +80,7 @@ const PROPIA = 'Jorge-Propia-2026!';
   await page.getByLabel('Contraseña temporal').fill(TEMPORAL);
   await page.getByRole('button', { name: 'Crear cuenta' }).click();
   await page.getByText(`Cuenta creada para ${NUEVO.nombre}`).waitFor();
-  await page.getByRole('cell', { name: NUEVO.correo, exact: true }).waitFor();
+  await page.getByText(NUEVO.correo, { exact: true }).waitFor();
   paso('cuenta creada (Create)');
   await foto('04-usuarios-creado');
 
@@ -90,7 +92,7 @@ const PROPIA = 'Jorge-Propia-2026!';
 
   // 6. Error manejado: desactivar la última coordinación → 409
   await page.getByRole('button', { name: 'Desactivar coordinacion@ecoalert.pe' }).click();
-  await page.getByRole('button', { name: 'Confirmar: desactivar coordinacion@ecoalert.pe' }).click();
+  await page.getByRole('button', { name: 'Desactivar cuenta de coordinacion@ecoalert.pe' }).click();
   await page.getByText('No se puede desactivar la última cuenta de coordinación').waitFor();
   paso('409 ULTIMA_COORDINACION mostrado');
   await foto('05-error-ultima-coordinacion');
@@ -108,7 +110,7 @@ const PROPIA = 'Jorge-Propia-2026!';
   await page.getByLabel('Repite la contraseña nueva').fill(PROPIA);
   await foto('06-cambiar-password');
   await page.getByRole('button', { name: 'Guardar contraseña' }).click();
-  await page.getByRole('heading', { name: 'Panel de monitoreo ambiental' }).waitFor();
+  await page.getByRole('heading', { name: 'Panel', exact: true }).waitFor();
   if (await page.getByText('Tu cuenta tiene una contraseña temporal').count()) throw new Error('aviso persiste');
   paso('contraseña propia definida (RF-02-AC-4)');
 
@@ -117,7 +119,7 @@ const PROPIA = 'Jorge-Propia-2026!';
   await login('coordinacion@ecoalert.pe', pw);
   await page.getByRole('link', { name: 'Usuarios', exact: true }).click();
   await page.getByRole('button', { name: `Desactivar ${NUEVO.correo}` }).click();
-  await page.getByRole('button', { name: `Confirmar: desactivar ${NUEVO.correo}` }).click();
+  await page.getByRole('button', { name: `Desactivar cuenta de ${NUEVO.correo}` }).click();
   await page.getByText('desactivada; sus sesiones abiertas se cerraron.').waitFor();
   paso('cuenta desactivada (baja lógica)');
   await foto('07-usuario-desactivado');

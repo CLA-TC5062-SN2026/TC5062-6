@@ -53,7 +53,7 @@ demostración (`backend/scripts/sembrar_demo.py`). El detalle por requerimiento 
 
 | | |
 |---|---|
-| ![Inicio de sesión](S11_A1/capturas/01-login.png) **Inicio de sesión** — toda ruta protegida sin sesión redirige aquí. | ![Panel de Coordinación](S11_A1/capturas/02-panel-coordinacion.png) **Panel** — datos de la sesión y accesos según el rol. |
+| ![Inicio de sesión](S11_A1/capturas/01-login.png) **Inicio de sesión** — toda ruta protegida sin sesión redirige aquí. | ![Panel de Coordinación](S11_A1/capturas/02-panel-coordinacion.png) **Panel** — cifras y zonas ordenadas por superficie alertada, calculadas con las alertas cargadas. |
 | ![Alertas](S11_A1/capturas/03-alertas.png) **Alertas** — 24 alertas de GeoBosques desde PostGIS, con filtros y paginación. | ![Usuarios](S11_A1/capturas/04-usuarios-creado.png) **Gestión de usuarios** — alta de una cuenta de Analista SIG. |
 | ![Error 409](S11_A1/capturas/05-error-ultima-coordinacion.png) **Error manejado** — el servidor impide desactivar la última cuenta de Coordinación (409). | ![Cambio de contraseña](S11_A1/capturas/06-cambiar-password.png) **Primer ingreso** — la cuenta nueva debe reemplazar su contraseña temporal. |
 
@@ -137,7 +137,8 @@ Versiones instaladas y verificadas el 24/11/2026 (`requirements*.txt` y `package
 | Frontend | React / React DOM | 19.3.1 | Interfaz como SPA de componentes |
 | | React Router | 7.18.4 | Rutas públicas y protegidas |
 | | Vite | 6.4.5 | Servidor de desarrollo, proxy de `/api` y build de producción |
-| | Tailwind CSS | 4.3.4 | Estilos utilitarios y diseño responsivo |
+| | Tailwind CSS | 4.3.4 | Estilos utilitarios y diseño responsivo; los colores del sistema visual son tokens `@theme` en `frontend/src/index.css` |
+| | Archivo (`@fontsource-variable/archivo`) | 5.3.0 | Tipografía servida desde el propio build, con eje de ancho (expandida en títulos, condensada en tablas) |
 | Pruebas | pytest + httpx | 8.4.2 + 0.28.1 | Pruebas de backend contra PostgreSQL real |
 | | Vitest + Testing Library + jsdom | 5.0.5 + 16.3.3 + 30.1.3 | Pruebas de servicios, rutas y páginas del frontend |
 | | Playwright | 1.60.0 | Prueba E2E del flujo de la demo (fuera del `package.json`) |
@@ -215,7 +216,7 @@ documentación interactiva queda en <http://127.0.0.1:8000/docs>.
 | Suite | Comando | Resultado verificado (24/11/2026) | Evidencia |
 |---|---|---|---|
 | Backend: CRUD, lecturas, contrato, integridad SQL e integración (`backend/tests/`) y seguridad JWT (`S05_S06_A2/pruebas/`) | `cd backend && .venv/bin/python -m pytest` | **234 de 234** (110 + 124) | [`pytest_backend.txt`](S11_A1/evidencias/pytest_backend.txt) |
-| Frontend: servicios, rutas protegidas y páginas | `npm --prefix frontend test` | **39 de 39** | [`vitest_frontend.txt`](S11_A1/evidencias/vitest_frontend.txt) |
+| Frontend: servicios, rutas protegidas y páginas | `npm --prefix frontend test` | **45 de 45** | [`vitest_frontend.txt`](S11_A1/evidencias/vitest_frontend.txt) |
 | E2E del flujo de la demo (13 pasos, navegador real) | ver cabecera de [`flujo_e2e.cjs`](S11_A1/evidencias/flujo_e2e.cjs) | Aprobado en local y en el Codespace, sin errores inesperados de consola | [`e2e_local.txt`](S11_A1/evidencias/e2e_local.txt) · [`e2e_codespace.txt`](S11_A1/evidencias/e2e_codespace.txt) |
 | Colección Postman del backend | ver [`backend/README.md`](backend/README.md#colección-postman-del-backend-final) | 58 aserciones, 0 fallos (25/10/2026) | `S05_S06_A2/evidencias/newman_backend_final.txt` |
 
