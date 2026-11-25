@@ -143,5 +143,6 @@ export function createHttpClient({ baseURL, timeoutMs, fetchImpl = (...args) => 
     get: (ruta, opciones) => request(ruta, { ...opciones, method: 'GET' }),
     post: (ruta, body, opciones) => request(ruta, { ...opciones, method: 'POST', body }),
     put: (ruta, body, opciones) => request(ruta, { ...opciones, method: 'PUT', body }),
+    patch: (ruta, body, opciones) => request(ruta, { ...opciones, method: 'PATCH', body }),
   };
 }

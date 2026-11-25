@@ -1,0 +1,18 @@
+✓ sin sesión redirige a /login
+  · 401 POST http://localhost:5174/api/v1/auth/login
+✓ credenciales incorrectas → 401 con mensaje genérico
+✓ login de Coordinación
+✓ alertas: 24 desde PostGIS
+✓ lista de usuarios (Read)
+✓ validación de contraseña temporal en el cliente
+✓ cuenta creada (Create)
+✓ nombre actualizado (Update, PATCH)
+  · 409 PATCH http://localhost:5174/api/v1/usuarios/46f8e8b8-667e-44f7-8b35-1c6eb16970f0
+✓ 409 ULTIMA_COORDINACION mostrado
+✓ analista con contraseña temporal: aviso y sin menú Usuarios
+✓ contraseña propia definida (RF-02-AC-4)
+✓ cuenta desactivada (baja lógica)
+  · 401 POST http://localhost:5174/api/v1/auth/login
+✓ cuenta desactivada no puede iniciar sesión (RF-02-AC-5)
+Errores de consola esperados (401/409): 3
+Errores de consola inesperados: ninguno

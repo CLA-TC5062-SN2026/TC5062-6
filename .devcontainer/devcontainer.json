@@ -1,0 +1,21 @@
+{
+  // Entorno de GitHub Codespaces para levantar EcoAlert Tambopata completo (PostGIS + FastAPI + SPA).
+  // Uso: crear el Codespace y ejecutar `bash .devcontainer/levantar.sh` (ver README.md, sección Despliegue).
+  "name": "EcoAlert Tambopata",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
+  "features": {
+    // PostGIS corre con el docker-compose.yml del backend, igual que en local.
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/node:1": { "version": "22" },
+    // Permite operar el Codespace con `gh codespace ssh` sin abrir VS Code.
+    "ghcr.io/devcontainers/features/sshd:1": {}
+  },
+  // Solo se publica la SPA (4173, `vite preview`); el proxy de Vite reenvía /api al backend local (8000).
+  // La API y la base de datos no se exponen fuera del Codespace.
+  "forwardPorts": [4173],
+  "portsAttributes": {
+    "4173": { "label": "EcoAlert (SPA)", "onAutoForward": "notify" },
+    "8000": { "label": "API (interna)", "onAutoForward": "silent" }
+  },
+  "postCreateCommand": "python -m venv backend/.venv && backend/.venv/bin/pip install -q -r backend/requirements-test.txt && npm --prefix frontend ci --no-audit --no-fund"
+}

@@ -38,11 +38,14 @@ export default defineConfig(({ mode }) => {
   const proxy = {
     '/api': { target: env.API_PROXY_TARGET || 'http://localhost:8000', changeOrigin: true },
   };
+  // Vite rechaza peticiones cuyo Host no reconoce (protección contra DNS rebinding). La URL pública de un
+  // GitHub Codespace llega como <codespace>-<puerto>.app.github.dev: se permite solo ese dominio, no cualquiera.
+  const allowedHosts = ['.app.github.dev'];
 
   return {
     plugins: [react(), tailwindcss(), cspDeProduccion(env.VITE_API_URL || '/api/v1')],
-    server: { proxy },
-    preview: { proxy },
+    server: { proxy, allowedHosts },
+    preview: { proxy, allowedHosts },
     test: {
       environment: 'jsdom',
       setupFiles: './src/test/setup.js',

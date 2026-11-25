@@ -1,0 +1,48 @@
+
+ RUN  v5.0.5 <repo>/frontend
+
+ ✓ src/services/authService.test.js > authService e interceptores de api > login guarda el token y no envía Authorization 9ms
+ ✓ src/services/authService.test.js > authService e interceptores de api > un 401 en el login muestra el mensaje de credenciales y no dispara "sesión expirada" 1ms
+ ✓ src/services/authService.test.js > authService e interceptores de api > el interceptor agrega el JWT a las operaciones protegidas 1ms
+ ✓ src/services/authService.test.js > authService e interceptores de api > un 401 en una operación protegida borra el token y avisa a los suscriptores 1ms
+ ✓ src/services/authService.test.js > authService e interceptores de api > logout borra el token local aunque el servidor no responda 1ms
+ ✓ src/services/authService.test.js > tokenStorage > descarta un token vencido 0ms
+ ✓ src/services/authService.test.js > tokenStorage > usa sessionStorage y no localStorage 0ms
+ ✓ src/services/httpClient.test.js > httpClient > construye la URL con la base y omite los parámetros vacíos 11ms
+ ✓ src/services/httpClient.test.js > httpClient > aplica los interceptores de solicitud antes de llamar a fetch 1ms
+ ✓ src/services/httpClient.test.js > httpClient > envía el cuerpo como JSON 1ms
+ ✓ src/services/httpClient.test.js > httpClient > convierte un problem+json 4xx en ApiError con el mensaje del contrato 2ms
+ ✓ src/services/httpClient.test.js > httpClient > no muestra al usuario el detalle interno de un 500 1ms
+ ✓ src/services/httpClient.test.js > httpClient > incluye el tiempo de espera de Retry-After en un 429 1ms
+ ✓ src/services/httpClient.test.js > httpClient > traduce un fallo de red en un mensaje útil para el usuario 1ms
+ ✓ src/services/httpClient.test.js > httpClient > trata un 5xx del proxy (backend caído, sin problem+json) como fallo de conexión 0ms
+ ✓ src/services/httpClient.test.js > httpClient > corta la petición al superar el tiempo máximo 12ms
+ ✓ src/services/httpClient.test.js > httpClient > propaga la cancelación del llamador sin convertirla en error de usuario 1ms
+ ✓ src/services/httpClient.test.js > httpClient > pasa cada error por los interceptores de error una sola vez 1ms
+ ✓ src/routes/ProtectedRoute.test.jsx > flujo de autenticación y ruta protegida > sin sesión, una ruta protegida redirige al login 206ms
+ ✓ src/routes/ProtectedRoute.test.jsx > flujo de autenticación y ruta protegida > con un token guardado, confirma la sesión con /auth/me y muestra la ruta protegida 40ms
+ ✓ src/routes/ProtectedRoute.test.jsx > flujo de autenticación y ruta protegida > si el servidor rechaza el token guardado, vuelve al login y explica por qué 23ms
+ ✓ src/pages/AlertasPage.test.jsx > AlertasPage > muestra el estado de carga y después las alertas del backend 256ms
+ ✓ src/pages/AlertasPage.test.jsx > AlertasPage > muestra un error comprensible y permite reintentar 69ms
+ ✓ src/pages/UsuariosPage.test.jsx > UsuariosPage (RF-02) > lista las cuentas y filtra por estado 335ms
+ ✓ src/pages/AlertasPage.test.jsx > AlertasPage > valida el código de zona en el cliente y envía el filtro normalizado 228ms
+ ✓ src/pages/AlertasPage.test.jsx > AlertasPage > indica cuando no hay resultados 15ms
+ ✓ src/routes/ProtectedRoute.test.jsx > flujo de autenticación y ruta protegida > login exitoso redirige a la ruta protegida que se había pedido 252ms
+ ✓ src/pages/CambiarPasswordPage.test.jsx > CambiarPasswordPage (RF-02-AC-4) > cambia la contraseña temporal y vuelve al panel sin el aviso 634ms
+ ✓ src/pages/UsuariosPage.test.jsx > UsuariosPage (RF-02) > crea una cuenta con Idempotency-Key y muestra la confirmación (RF-02-AC-1) 383ms
+ ✓ src/routes/ProtectedRoute.test.jsx > flujo de autenticación y ruta protegida > tras "Cerrar sesión", la siguiente cuenta entra al panel y no a la última página de la anterior 259ms
+ ✓ src/routes/ProtectedRoute.test.jsx > flujo de autenticación y ruta protegida > valida el formulario antes de llamar a la API 20ms
+ ✓ src/pages/CambiarPasswordPage.test.jsx > CambiarPasswordPage (RF-02-AC-4) > valida en el cliente la longitud y la confirmación 158ms
+ ✓ src/routes/ProtectedRoute.test.jsx > flujo de autenticación y ruta protegida > muestra el error del servidor cuando las credenciales son incorrectas 130ms
+ ✓ src/pages/CambiarPasswordPage.test.jsx > CambiarPasswordPage (RF-02-AC-4) > muestra el error del servidor si la contraseña actual es incorrecta 212ms
+ ✓ src/pages/UsuariosPage.test.jsx > UsuariosPage (RF-02) > rechaza en el cliente una contraseña temporal de 11 caracteres (RF-02-AC-3) 227ms
+ ✓ src/pages/UsuariosPage.test.jsx > UsuariosPage (RF-02) > muestra el error del servidor al desactivar la última coordinación (RF-02-AC-8) 62ms
+ ✓ src/pages/UsuariosPage.test.jsx > UsuariosPage (RF-02) > edita solo los campos que cambiaron 100ms
+ ✓ src/pages/UsuariosPage.test.jsx > UsuariosPage (RF-02) > un Analista SIG no ve la opción en el menú ni puede usar la pantalla (RF-02-AC-10) 9ms
+ ✓ src/pages/UsuariosPage.test.jsx > UsuariosPage (RF-02) > Coordinación sí ve la opción "Usuarios" en el menú 13ms
+
+ Test Files  6 passed (6)
+      Tests  39 passed (39)
+   Start at  23:50:22
+   Duration  3.17s (environment 55%, tests 27%, setup 10%, transform 5%, import 4%)
+

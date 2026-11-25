@@ -1,0 +1,20 @@
+# 2026-11-25T05:50Z — node flujo_e2e.cjs https://ecoalert-s11-demo-9657g5g67gjq3pgww-4173.app.github.dev
+✓ aviso de Codespaces aceptado
+✓ sin sesión redirige a /login
+  · 401 POST https://ecoalert-s11-demo-9657g5g67gjq3pgww-4173.app.github.dev/api/v1/auth/login
+✓ credenciales incorrectas → 401 con mensaje genérico
+✓ login de Coordinación
+✓ alertas: 24 desde PostGIS
+✓ lista de usuarios (Read)
+✓ validación de contraseña temporal en el cliente
+✓ cuenta creada (Create)
+✓ nombre actualizado (Update, PATCH)
+  · 409 PATCH https://ecoalert-s11-demo-9657g5g67gjq3pgww-4173.app.github.dev/api/v1/usuarios/4f2ab748-1547-4542-9760-8a4a9d4c9c5a
+✓ 409 ULTIMA_COORDINACION mostrado
+✓ analista con contraseña temporal: aviso y sin menú Usuarios
+✓ contraseña propia definida (RF-02-AC-4)
+✓ cuenta desactivada (baja lógica)
+  · 401 POST https://ecoalert-s11-demo-9657g5g67gjq3pgww-4173.app.github.dev/api/v1/auth/login
+✓ cuenta desactivada no puede iniciar sesión (RF-02-AC-5)
+Errores de consola esperados (401/409): 3
+Errores de consola inesperados: ninguno

@@ -131,6 +131,24 @@ def test_historial_cronologico_con_autor_sistema(api, conforme):
     assert api('GET', f'{API}/zonas/{ZONA}/historial/{HISTORIAL_CREACION}').json == primera
 
 
+def test_RF_02_AC_6_autor_desactivado_sigue_apareciendo_en_el_historial(api, conforme):
+    """Desactivar a la analista de la semilla no borra ni anonimiza su autoría: las cuentas no se eliminan."""
+    ana = '00000000-0000-4000-8000-000000000001'
+    merge_patch = {'Content-Type': 'application/merge-patch+json'}
+    desactivada = api('PATCH', f'{API}/usuarios/{ana}', {'activo': False}, merge_patch)
+    assert desactivada.estado == 200 and desactivada.json['activo'] is False
+    try:
+        r = api('GET', f'{API}/zonas/{ZONA}/historial')
+        assert r.estado == 200
+        for entrada in r.json:
+            conforme('EntradaHistorial', entrada)
+        autores = [e['autor'] for e in r.json if e['autor']['tipo'] == 'usuario']
+        assert len(autores) == 3 and {a['nombre'] for a in autores} == {'Ana Quispe Mamani'}
+    finally:
+        # La semilla es compartida por la suite: se restaura aunque la aserción falle.
+        assert api('PATCH', f'{API}/usuarios/{ana}', {'activo': True}, merge_patch).estado == 200
+
+
 # --------------------------------------------------------------------------- trabajos
 
 def test_trabajos_completado_y_fallido(api, conforme):

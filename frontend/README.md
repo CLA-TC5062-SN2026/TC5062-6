@@ -5,7 +5,8 @@
 Frontend de **EcoAlert Tambopata**, desarrollado con React, Vite y Tailwind CSS v4.
 
 Desde S07-S08-A2 la aplicación está **integrada con el backend FastAPI** (`../backend`): inicia sesión con JWT,
-protege las rutas que requieren sesión y consulta las alertas de deforestación desde la API REST. Las decisiones de
+protege las rutas que requieren sesión y consulta las alertas de deforestación desde la API REST. En S11-A1 se agregó la
+**gestión de usuarios** para Coordinación (RF-02) y el **cambio de contraseña** temporal (RF-02-AC-4). Las decisiones de
 la capa de servicios están en [`S07_S08_A2/capa_servicios.md`](../S07_S08_A2/capa_servicios.md).
 
 ## 2. Tecnologías utilizadas
@@ -13,7 +14,7 @@ la capa de servicios están en [`S07_S08_A2/capa_servicios.md`](../S07_S08_A2/ca
 - **React 19:** construcción de interfaces mediante componentes reutilizables.
 - **Vite 6:** entorno de desarrollo (con proxy hacia la API) y compilación.
 - **Tailwind CSS v4:** estilos y diseño responsivo.
-- **React Router 7:** rutas públicas (`/login`) y protegidas (`/dashboard`, `/alertas`).
+- **React Router 7:** rutas públicas (`/login`) y protegidas (`/dashboard`, `/alertas`, `/usuarios`, `/cambiar-password`).
 - **useState + Context API:** estado local y sesión compartida (`AuthContext`).
 - **fetch** nativo envuelto en un cliente con interceptores (`src/services/httpClient.js`).
 - **Vitest + Testing Library:** pruebas de la capa de servicios, la ruta protegida y la vista de alertas.
@@ -51,6 +52,10 @@ la capa de servicios están en [`S07_S08_A2/capa_servicios.md`](../S07_S08_A2/ca
 2. Ejecutar los comandos anteriores; el proxy de Vite reenvía `/api` a `http://localhost:8000` del mismo contenedor.
 3. En la pestaña **Ports (Puertos)** abrir el puerto `5173` con **Open in Browser**. No hace falta publicar el 8000.
 
+Para el despliegue completo (base, API y build de producción en el puerto 4173) usar `bash .devcontainer/levantar.sh`;
+ver la sección *Despliegue* del [README raíz](../README.md#8-despliegue). Vite solo acepta los hosts `*.app.github.dev`
+además de `localhost` (`allowedHosts` en `vite.config.js`).
+
 ## 5. Estructura principal
 
 ```text
@@ -61,12 +66,13 @@ frontend/src/
 │   ├── api.js                 Instancia configurada: interceptor JWT e interceptor de 401
 │   ├── apiError.js            ApiError y tabla única de mensajes para el usuario
 │   ├── tokenStorage.js        JWT en sessionStorage + memoria, con expiración
-│   ├── authService.js         login, obtenerSesionActual (/auth/me), logout
+│   ├── authService.js         login, obtenerSesionActual (/auth/me), logout, cambiarPassword
+│   ├── usuariosService.js     listar, crear (Idempotency-Key), actualizar (merge-patch), desactivar/reactivar
 │   └── alertasService.js      listar (GET /alertas)
 ├── context/AuthContext.jsx    Sesión compartida (usuario y estado de verificación)
 ├── routes/ProtectedRoute.jsx  Redirige a /login sin sesión
 ├── hooks/useApiQuery.js       Carga, error, reintento y cancelación de consultas
-├── pages/                     LoginPage, DashboardPage, AlertasPage, NotFoundPage
+├── pages/                     LoginPage, DashboardPage, AlertasPage, UsuariosPage, CambiarPasswordPage, NotFoundPage
 ├── components/                Button, Input, Card, Navbar, AppLayout, ErrorAlert, LoadingState
 ├── test/                      Configuración y utilidades de pruebas
 └── App.jsx                    Definición de rutas
@@ -110,9 +116,12 @@ function Ejemplo() {
 | `/login` | Pública | Formulario con validación; llama a `authService.login()`, guarda el JWT y redirige a la ruta pedida o a `/dashboard`. |
 | `/dashboard` | Protegida | Datos de la sesión (correo, rol) y acceso a la consulta de alertas. |
 | `/alertas` | Protegida | `GET /api/v1/alertas` con estado de carga, error con reintento, filtros por zona y presencia, y paginación. |
+| `/usuarios` | Protegida, solo Coordinación | Lista con filtro por estado, alta idempotente, edición de nombre y rol (PATCH merge-patch) y desactivación/reactivación con confirmación. El enlace no aparece en el menú de Analista SIG (RF-02-AC-10); el backend responde 403 de todos modos. |
+| `/cambiar-password` | Protegida | Reemplaza la contraseña temporal (`PUT /auth/password`); el panel enlaza aquí mientras `debe_cambiar_password` sea verdadero. |
 | `/` | — | Redirige a `/dashboard`. |
 
-El botón **Cerrar sesión** revoca el token en el servidor (`POST /auth/logout`) y lo borra del navegador.
+El botón **Cerrar sesión** revoca el token en el servidor (`POST /auth/logout`) y lo borra del navegador. Después de un
+cierre voluntario, la siguiente cuenta que inicie sesión en la pestaña entra al panel, no a la última página de la anterior.
 
 ## 8. Variables de entorno
 
@@ -130,7 +139,7 @@ Copiar `.env.example` a `.env` (no se versiona):
 ## 9. Verificación del funcionamiento
 
 ```bash
-npm test          # 28 pruebas (Vitest + Testing Library)
+npm test          # 39 pruebas (Vitest + Testing Library)
 npm run build     # compilación de producción con Content-Security-Policy
 ```
 
@@ -161,6 +170,7 @@ La revisión documentada no constituye una certificación integral de conformida
 
 - `S07_S08_A1/`: `decision_stack_frontend.md`, `revision_componentes.md`, `accesibilidad.md`, `scaffolding.mp4`.
 - `S07_S08_A2/`: `capa_servicios.md` (decisiones de la capa de servicios), `flujo_auth.mp4` y `flujo_e2e.mp4`.
+- `S11_A1/`: matriz de trazabilidad, retrospectiva, capturas y la prueba E2E `evidencias/flujo_e2e.cjs`.
 
 ## 12. Evidencia de scaffolding
 

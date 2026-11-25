@@ -8,6 +8,8 @@ const ENLACES = [
   { to: '/dashboard', label: 'Panel' },
   { to: '/alertas', label: 'Alertas' },
 ];
+// RF-02-AC-10: la gestión de usuarios solo aparece en el menú de Coordinación (el backend responde 403 al resto).
+const ENLACES_COORDINACION = [{ to: '/usuarios', label: 'Usuarios' }];
 
 export default function AppLayout() {
   const { usuario, logout } = useAuth();
@@ -23,7 +25,7 @@ export default function AppLayout() {
       <Navbar
         isAuthenticated
         userName={usuario?.nombre_completo}
-        links={ENLACES}
+        links={usuario?.rol === 'coordinacion' ? [...ENLACES, ...ENLACES_COORDINACION] : ENLACES}
         onLogout={cerrarSesion}
       />
       <main id="contenido" className="mx-auto max-w-5xl px-4 py-8">
