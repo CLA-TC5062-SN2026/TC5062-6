@@ -70,7 +70,7 @@ if curl -fsS http://127.0.0.1:8000/salud >/dev/null 2>&1; then
   echo "La API ya está en ejecución."
 else
   (cd "$BACKEND" && nohup "$PY" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --env-file .env \
-    >"$LOGS/ecoalert-api.log" 2>&1 &)
+    </dev/null >"$LOGS/ecoalert-api.log" 2>&1 &)
   for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8000/salud >/dev/null 2>&1 && break; sleep 1; done
 fi
 curl -fsS http://127.0.0.1:8000/salud; echo
@@ -79,7 +79,7 @@ paso "6/6 SPA: build de producción servido con vite preview en el puerto 4173"
 npm --prefix "$FRONTEND" run build >/dev/null
 if ! curl -fsS -o /dev/null http://127.0.0.1:4173/ 2>/dev/null; then
   (cd "$FRONTEND" && nohup npx vite preview --host 0.0.0.0 --port 4173 --strictPort \
-    >"$LOGS/ecoalert-spa.log" 2>&1 &)
+    </dev/null >"$LOGS/ecoalert-spa.log" 2>&1 &)
   for _ in $(seq 1 30); do curl -fsS -o /dev/null http://127.0.0.1:4173/ 2>/dev/null && break; sleep 1; done
 fi
 # 401 = la SPA llega a la API a través del proxy (misma origen, sin CORS) y la API exige JWT.
