@@ -21,7 +21,10 @@ export default function DashboardPage() {
 
       {usuario.debe_cambiar_password && (
         <div role="alert" className="mb-6 rounded-md border border-amber-300 bg-amber-50 p-4 text-amber-900">
-          Tu cuenta tiene una contraseña temporal. Debes cambiarla antes de consultar la información del sistema.
+          <p>Tu cuenta tiene una contraseña temporal. Debes cambiarla antes de consultar la información del sistema.</p>
+          <Link to="/cambiar-password" className="mt-2 inline-flex font-semibold underline">
+            Cambiar mi contraseña
+          </Link>
         </div>
       )}
 
@@ -44,6 +47,18 @@ export default function DashboardPage() {
             Ver alertas
           </Link>
         </Card>
+
+        {usuario.rol === 'coordinacion' && (
+          <Card title="Gestión de usuarios" headingLevel={2}>
+            <p className="mb-4">Crea cuentas, cambia su rol y desactiva las que ya no deban ingresar.</p>
+            <Link
+              to="/usuarios"
+              className="inline-flex rounded-md bg-green-700 px-4 py-2 font-medium text-white hover:bg-green-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-800"
+            >
+              Gestionar usuarios
+            </Link>
+          </Card>
+        )}
       </div>
     </>
   );

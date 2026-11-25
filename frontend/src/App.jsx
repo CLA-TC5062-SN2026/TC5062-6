@@ -2,9 +2,11 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import AppLayout from './components/AppLayout.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import AlertasPage from './pages/AlertasPage.jsx';
+import CambiarPasswordPage from './pages/CambiarPasswordPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
+import UsuariosPage from './pages/UsuariosPage.jsx';
 import ProtectedRoute from './routes/ProtectedRoute.jsx';
 
 export function AppRoutes() {
@@ -22,6 +24,8 @@ export function AppRoutes() {
       >
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/alertas" element={<AlertasPage />} />
+        <Route path="/usuarios" element={<UsuariosPage />} />
+        <Route path="/cambiar-password" element={<CambiarPasswordPage />} />
       </Route>
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

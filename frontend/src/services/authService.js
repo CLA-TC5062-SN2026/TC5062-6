@@ -35,6 +35,14 @@ export const authService = {
     }
   },
 
+  /**
+   * PUT /auth/password — operationId cambiarPassword (RF-02-AC-4). La sesión actual sigue válida;
+   * el servidor cierra las demás sesiones de la cuenta.
+   */
+  async cambiarPassword({ actual, nueva }) {
+    await api.put('/auth/password', { password_actual: actual, password_nueva: nueva });
+  },
+
   tieneToken() {
     return tokenStorage.obtener() !== null;
   },

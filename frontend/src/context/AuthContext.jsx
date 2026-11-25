@@ -21,6 +21,9 @@ export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(null);
   // Mensaje para la pantalla de login cuando la sesión terminó sin que el usuario la cerrara.
   const [aviso, setAviso] = useState(null);
+  // true tras "Cerrar sesión": la ruta protegida no recuerda la página anterior, así la próxima persona que
+  // inicie sesión en la pestaña llega al panel y no a la última página de la cuenta anterior.
+  const [cierreVoluntario, setCierreVoluntario] = useState(false);
 
   // Al recargar la página con un token guardado, se confirma con el servidor (GET /auth/me) antes de
   // mostrar contenido protegido: el token pudo revocarse o expirar por inactividad.
@@ -49,6 +52,7 @@ export function AuthProvider({ children }) {
         setUsuario(null);
         setEstado(ESTADO_SESION.ANONIMO);
         setAviso(error.message);
+        setCierreVoluntario(false);
       }),
     [],
   );
@@ -58,6 +62,7 @@ export function AuthProvider({ children }) {
     setUsuario(autenticado);
     setEstado(ESTADO_SESION.AUTENTICADO);
     setAviso(null);
+    setCierreVoluntario(false);
     return autenticado;
   }, []);
 
@@ -70,12 +75,29 @@ export function AuthProvider({ children }) {
       setUsuario(null);
       setEstado(ESTADO_SESION.ANONIMO);
       setAviso(null);
+      setCierreVoluntario(true);
     }
   }, []);
 
+  // Vuelve a leer el usuario (p. ej. tras cambiar la contraseña temporal, debe_cambiar_password pasa a false).
+  const refrescarUsuario = useCallback(async () => {
+    const actual = await authService.obtenerSesionActual();
+    setUsuario(actual);
+    return actual;
+  }, []);
+
   const valor = useMemo(
-    () => ({ estado, usuario, aviso, login, logout, estaAutenticado: estado === ESTADO_SESION.AUTENTICADO }),
-    [estado, usuario, aviso, login, logout],
+    () => ({
+      estado,
+      usuario,
+      aviso,
+      cierreVoluntario,
+      login,
+      logout,
+      refrescarUsuario,
+      estaAutenticado: estado === ESTADO_SESION.AUTENTICADO,
+    }),
+    [estado, usuario, aviso, cierreVoluntario, login, logout, refrescarUsuario],
   );
 
   return <AuthContext.Provider value={valor}>{children}</AuthContext.Provider>;

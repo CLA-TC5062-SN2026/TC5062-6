@@ -58,6 +58,25 @@ describe('flujo de autenticación y ruta protegida', () => {
     expect(tokenStorage.obtener()).toBe(SESION_CREADA.access_token);
   });
 
+  it('tras "Cerrar sesión", la siguiente cuenta entra al panel y no a la última página de la anterior', async () => {
+    tokenStorage.guardar('jwt', 3600);
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url, init) => {
+      if (url.endsWith('/auth/me')) return jsonResponse({ usuario: USUARIO, ultima_actividad: 'x' });
+      if (url.endsWith('/auth/logout')) return new Response(null, { status: 204 });
+      if (url.endsWith('/auth/login') && init.method === 'POST') return jsonResponse(SESION_CREADA);
+      return jsonResponse({ total: 0, limite: 10, desplazamiento: 0, alertas: [] });
+    }));
+    const usuario = userEvent.setup();
+    renderizarEn('/alertas');
+
+    await usuario.click(await screen.findByRole('button', { name: 'Cerrar sesión' }));
+    await usuario.type(await screen.findByLabelText('Correo electrónico'), 'otra.cuenta@ecoalert.pe');
+    await usuario.type(screen.getByLabelText('Contraseña'), 'clave-segura-2026');
+    await usuario.click(screen.getByRole('button', { name: 'Ingresar' }));
+
+    expect(await screen.findByRole('heading', { name: 'Panel de monitoreo ambiental' })).toBeInTheDocument();
+  });
+
   it('valida el formulario antes de llamar a la API', async () => {
     vi.stubGlobal('fetch', vi.fn());
     const usuario = userEvent.setup();
