@@ -30,7 +30,7 @@ describe('flujo de autenticación y ruta protegida', () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => jsonResponse({ usuario: USUARIO, ultima_actividad: 'x' })));
     renderizarEn('/dashboard');
     expect(screen.getByRole('status')).toHaveTextContent('Verificando tu sesión');
-    expect(await screen.findByRole('heading', { name: 'Panel de monitoreo ambiental' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Panel' })).toBeInTheDocument();
   });
 
   it('si el servidor rechaza el token guardado, vuelve al login y explica por qué', async () => {
@@ -74,7 +74,7 @@ describe('flujo de autenticación y ruta protegida', () => {
     await usuario.type(screen.getByLabelText('Contraseña'), 'clave-segura-2026');
     await usuario.click(screen.getByRole('button', { name: 'Ingresar' }));
 
-    expect(await screen.findByRole('heading', { name: 'Panel de monitoreo ambiental' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Panel' })).toBeInTheDocument();
   });
 
   it('valida el formulario antes de llamar a la API', async () => {

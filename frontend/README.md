@@ -68,12 +68,12 @@ frontend/src/
 │   ├── tokenStorage.js        JWT en sessionStorage + memoria, con expiración
 │   ├── authService.js         login, obtenerSesionActual (/auth/me), logout, cambiarPassword
 │   ├── usuariosService.js     listar, crear (Idempotency-Key), actualizar (merge-patch), desactivar/reactivar
-│   └── alertasService.js      listar (GET /alertas)
+│   └── alertasService.js      listar (GET /alertas), listarCargas (GET /cargas-alertas)
 ├── context/AuthContext.jsx    Sesión compartida (usuario y estado de verificación)
 ├── routes/ProtectedRoute.jsx  Redirige a /login sin sesión
 ├── hooks/useApiQuery.js       Carga, error, reintento y cancelación de consultas
 ├── pages/                     LoginPage, DashboardPage, AlertasPage, UsuariosPage, CambiarPasswordPage, NotFoundPage
-├── components/                Button, Input, Card, Navbar, AppLayout, ErrorAlert, LoadingState
+├── components/                Button, Input, Card, Navbar, AppLayout, ErrorAlert, LoadingState, Segmento, Simbolo, Marca
 ├── test/                      Configuración y utilidades de pruebas
 └── App.jsx                    Definición de rutas
 ```
@@ -88,6 +88,26 @@ Se desarrollaron cuatro componentes configurables mediante propiedades (*props*)
 | **Input** | Campos de entrada con etiqueta, validación, mensajes de error y atributos de accesibilidad. |
 | **Card** | Tarjetas para presentar contenido, encabezados configurables y secciones opcionales de pie de tarjeta. |
 | **Navbar** | Barra de navegación responsiva con estados visuales para usuarios autenticados y no autenticados. |
+| **Segmento** | Filtro de pocas opciones como botones excluyentes con `aria-pressed` (presencia de alertas, estado de cuentas). |
+| **Simbolo** | Punto relleno o aro: la misma simbología de estado en alertas (presente/ausente) y cuentas (activa/desactivada), siempre con texto. |
+
+### Sistema visual
+
+La identidad parte de la cartografía, porque EcoAlert es una herramienta SIG. Los colores son tokens `@theme` de
+Tailwind en `src/index.css`, y cada uno tiene un solo significado:
+
+| Token | Valor | Uso |
+|---|---|---|
+| `papel` | `#f4f6f1` | Fondo de la aplicación |
+| `tinta` / `tinta-suave` | `#18231f` / `#56635c` | Texto principal y secundario (contraste AA sobre blanco y papel) |
+| `dosel` | `#24533f` | Acciones principales y cuenta activa |
+| `perdida` | `#b8235f` | Solo datos de pérdida de bosque (superficie alertada, alerta presente) |
+| `rio` | `#2b5f86` | Rol de Coordinación y foco del teclado |
+| `ocre` / `peligro` | `#9a6400` / `#b42318` | Avisos de cuenta / errores y acciones destructivas |
+
+La tipografía es una sola familia, **Archivo**, servida desde el build (`@fontsource-variable/archivo`) y usada con su
+eje de ancho: expandida para títulos y cifras (`ancho-titulo`, `ancho-cifra`) y condensada para encabezados de tabla y
+códigos (`ancho-encabezado`, `ancho-codigo`).
 
 Los componentes se encuentran en `src/components/` y pueden importarse desde otras páginas.
 
@@ -114,8 +134,8 @@ function Ejemplo() {
 | Ruta | Acceso | Qué hace |
 |---|---|---|
 | `/login` | Pública | Formulario con validación; llama a `authService.login()`, guarda el JWT y redirige a la ruta pedida o a `/dashboard`. |
-| `/dashboard` | Protegida | Datos de la sesión (correo, rol) y acceso a la consulta de alertas. |
-| `/alertas` | Protegida | `GET /api/v1/alertas` con estado de carga, error con reintento, filtros por zona y presencia, y paginación. |
+| `/dashboard` | Protegida | Cifras de la última carga (alertas, zonas, superficie alertada, ausentes) y zonas ordenadas por superficie, calculadas en el cliente con `GET /alertas` y `GET /cargas-alertas`. Con contraseña temporal solo pide cambiarla. |
+| `/alertas` | Protegida | `GET /api/v1/alertas` con estado de carga, error con reintento, filtros por zona y presencia, y paginación. Pulsar un código de zona filtra por ella; acepta `?zona=` desde el panel. |
 | `/usuarios` | Protegida, solo Coordinación | Lista con filtro por estado, alta idempotente, edición de nombre y rol (PATCH merge-patch) y desactivación/reactivación con confirmación. El enlace no aparece en el menú de Analista SIG (RF-02-AC-10); el backend responde 403 de todos modos. |
 | `/cambiar-password` | Protegida | Reemplaza la contraseña temporal (`PUT /auth/password`); el panel enlaza aquí mientras `debe_cambiar_password` sea verdadero. |
 | `/` | — | Redirige a `/dashboard`. |
@@ -139,7 +159,7 @@ Copiar `.env.example` a `.env` (no se versiona):
 ## 9. Verificación del funcionamiento
 
 ```bash
-npm test          # 39 pruebas (Vitest + Testing Library)
+npm test          # 45 pruebas (Vitest + Testing Library)
 npm run build     # compilación de producción con Content-Security-Policy
 ```
 

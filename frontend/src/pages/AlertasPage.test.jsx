@@ -74,6 +74,40 @@ describe('AlertasPage', () => {
     expect(fetch.mock.calls.at(-1)[0]).toBe('/api/v1/alertas?zona=EA-2026-001&limite=10&desplazamiento=0');
   });
 
+  it('filtra por zona al pulsar su código y vuelve a todas las zonas', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => jsonResponse(PAGINA)));
+    const usuario = userEvent.setup();
+    renderizar();
+
+    await usuario.click(await screen.findByRole('button', { name: 'EA-2026-001' }));
+    await screen.findByRole('cell', { name: 'GB-2026-0001' });
+    expect(fetch.mock.calls.at(-1)[0]).toBe('/api/v1/alertas?zona=EA-2026-001&limite=10&desplazamiento=0');
+
+    await usuario.click(screen.getByRole('button', { name: 'Ver todas las zonas' }));
+    await screen.findByRole('cell', { name: 'GB-2026-0001' });
+    expect(fetch.mock.calls.at(-1)[0]).toBe('/api/v1/alertas?limite=10&desplazamiento=0');
+  });
+
+  it('acepta la zona que llega en la URL y filtra la presencia con el segmento', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => jsonResponse(PAGINA)));
+    const usuario = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/alertas?zona=ea-2026-001']}>
+        <AlertasPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('cell', { name: 'GB-2026-0001' });
+    expect(fetch.mock.calls[0][0]).toBe('/api/v1/alertas?zona=EA-2026-001&limite=10&desplazamiento=0');
+
+    await usuario.click(screen.getByRole('button', { name: 'Ausentes' }));
+    await screen.findByRole('cell', { name: 'GB-2026-0001' });
+    expect(fetch.mock.calls.at(-1)[0]).toBe(
+      '/api/v1/alertas?zona=EA-2026-001&presente_en_ultima_carga=false&limite=10&desplazamiento=0',
+    );
+    expect(screen.getByRole('button', { name: 'Ausentes' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('indica cuando no hay resultados', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => jsonResponse({ ...PAGINA, total: 0, alertas: [] })));
     renderizar();

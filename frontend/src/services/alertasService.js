@@ -21,4 +21,12 @@ function listar({ zona, presenteEnUltimaCarga, limite = 20, desplazamiento = 0, 
   });
 }
 
-export const alertasService = { listar };
+/**
+ * GET /cargas-alertas — operationId listarCargasAlertas. Roles: analista_sig, coordinacion.
+ * @returns {Promise<Array<object>>} cargas de la más reciente a la más antigua
+ */
+function listarCargas({ signal } = {}) {
+  return api.get('/cargas-alertas', { signal });
+}
+
+export const alertasService = { listar, listarCargas };

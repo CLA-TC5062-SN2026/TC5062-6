@@ -57,9 +57,9 @@ export default function CambiarPasswordPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg">
-      <h1 className="mb-2 text-3xl font-bold text-green-800">Cambiar contraseña</h1>
-      <p className="mb-6 text-gray-600">
+    <div className="flex max-w-lg flex-col gap-5">
+      <h1 className="ancho-titulo text-4xl leading-tight font-bold">Cambiar contraseña</h1>
+      <p className="text-tinta-suave">
         {usuario?.debe_cambiar_password
           ? 'Tu cuenta tiene una contraseña temporal. Define una propia para continuar.'
           : 'Al cambiarla se cerrarán tus sesiones abiertas en otros navegadores.'}

@@ -2,11 +2,13 @@
 // Estados visibles: cargando, error con reintento, sin resultados y resultados paginados.
 
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Button from '../components/Button.jsx';
-import Card from '../components/Card.jsx';
 import ErrorAlert from '../components/ErrorAlert.jsx';
 import Input from '../components/Input.jsx';
 import LoadingState from '../components/LoadingState.jsx';
+import Segmento from '../components/Segmento.jsx';
+import { Aro, PuntoRelleno } from '../components/Simbolo.jsx';
 import { useApiQuery } from '../hooks/useApiQuery.js';
 import { alertasService } from '../services/alertasService.js';
 
@@ -14,8 +16,8 @@ const TAMANO_PAGINA = 10;
 const CODIGO_ZONA = /^EA-\d{4}-\d{3}$/; // components/schemas/CodigoZona del contrato
 const OPCIONES_PRESENCIA = [
   { valor: '', etiqueta: 'Todas' },
-  { valor: 'true', etiqueta: 'Presentes en la última carga' },
-  { valor: 'false', etiqueta: 'Ausentes en la última carga' },
+  { valor: 'true', etiqueta: 'Presentes' },
+  { valor: 'false', etiqueta: 'Ausentes' },
 ];
 
 const formatoArea = new Intl.NumberFormat('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -32,10 +34,17 @@ function presenciaComoFiltro(valor) {
   return valor === 'true';
 }
 
+/** Zona recibida en la URL (p. ej. desde el panel): solo se acepta si cumple el formato del contrato. */
+function zonaInicial(params) {
+  const zona = (params.get('zona') ?? '').trim().toUpperCase();
+  return CODIGO_ZONA.test(zona) ? zona : '';
+}
+
 export default function AlertasPage() {
-  const [zonaEscrita, setZonaEscrita] = useState('');
+  const [params] = useSearchParams();
+  const [zonaEscrita, setZonaEscrita] = useState(() => zonaInicial(params));
   const [errorZona, setErrorZona] = useState('');
-  const [filtros, setFiltros] = useState({ zona: '', presencia: '' });
+  const [filtros, setFiltros] = useState(() => ({ zona: zonaInicial(params), presencia: '' }));
   const [pagina, setPagina] = useState(0);
 
   const { datos, error, cargando, recargar } = useApiQuery(
@@ -63,55 +72,72 @@ export default function AlertasPage() {
     setFiltros((previo) => ({ ...previo, zona }));
   }
 
-  function cambiarPresencia(event) {
+  function cambiarPresencia(presencia) {
     setPagina(0);
-    setFiltros((previo) => ({ ...previo, presencia: event.target.value }));
+    setFiltros((previo) => ({ ...previo, presencia }));
+  }
+
+  function filtrarPorZona(zona) {
+    setZonaEscrita(zona);
+    setErrorZona('');
+    setPagina(0);
+    setFiltros((previo) => ({ ...previo, zona }));
   }
 
   const total = datos?.total ?? 0;
   const totalPaginas = Math.max(1, Math.ceil(total / TAMANO_PAGINA));
   const alertas = datos?.alertas ?? [];
 
+  const desde = pagina * TAMANO_PAGINA + 1;
+  const hasta = pagina * TAMANO_PAGINA + alertas.length;
+
   return (
     <>
-      <h1 className="mb-2 text-3xl font-bold text-green-800">Alertas de deforestación</h1>
-      <p className="mb-6 text-gray-600">
-        Alertas de GeoBosques ingeridas por EcoAlert, ordenadas de la más reciente a la más antigua.
-      </p>
+      <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
+        <h1 className="ancho-titulo text-4xl leading-tight font-bold">Alertas de deforestación</h1>
+        {!cargando && !error && (
+          <p className="text-[17px] text-tinta-suave tabular-nums" aria-live="polite">
+            {total} {total === 1 ? 'alerta encontrada' : 'alertas encontradas'}
+          </p>
+        )}
+      </div>
 
-      <Card title="Filtros" headingLevel={2} className="mb-6">
-        <form onSubmit={aplicarFiltros} className="grid grid-cols-1 items-end gap-4 md:grid-cols-[1fr_1fr_auto]">
-          <Input
-            label="Código de zona"
-            name="zona"
-            value={zonaEscrita}
-            onChange={(event) => setZonaEscrita(event.target.value)}
-            placeholder="EA-2026-001"
-            error={errorZona}
-            autoComplete="off"
-          />
-          <div className="flex flex-col gap-1">
-            <label htmlFor="filtro-presencia" className="text-sm font-medium text-gray-700">
-              Presencia en la última carga
-            </label>
-            <select
-              id="filtro-presencia"
-              value={filtros.presencia}
-              onChange={cambiarPresencia}
-              className="rounded-md border border-gray-300 bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-700"
-            >
-              {OPCIONES_PRESENCIA.map((opcion) => (
-                <option key={opcion.valor} value={opcion.valor}>
-                  {opcion.etiqueta}
-                </option>
-              ))}
-            </select>
+      <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
+        <form onSubmit={aplicarFiltros} className="flex items-end gap-2" role="search" aria-label="Filtrar por zona">
+          <div className="w-56">
+            <Input
+              label="Código de zona"
+              name="zona"
+              value={zonaEscrita}
+              onChange={(event) => setZonaEscrita(event.target.value)}
+              placeholder="p. ej. EA-2026-101"
+              error={errorZona}
+              autoComplete="off"
+            />
           </div>
-          <Button type="submit">Buscar</Button>
+          <Button type="submit" variant="secondary" className={errorZona ? 'mb-7' : ''}>
+            Buscar
+          </Button>
         </form>
-      </Card>
+        <div className="flex flex-col gap-1.5">
+          <span id="etiqueta-presencia" className="text-sm font-semibold">
+            En la última carga
+          </span>
+          <Segmento
+            etiquetaId="etiqueta-presencia"
+            opciones={OPCIONES_PRESENCIA}
+            valor={filtros.presencia}
+            onCambiar={cambiarPresencia}
+          />
+        </div>
+        {filtros.zona && (
+          <Button variant="texto" onClick={() => filtrarPorZona('')}>
+            Ver todas las zonas
+          </Button>
+        )}
+      </div>
 
-      <section aria-labelledby="titulo-resultados" aria-busy={cargando}>
+      <section aria-labelledby="titulo-resultados" aria-busy={cargando} className="flex flex-col gap-3">
         <h2 id="titulo-resultados" className="sr-only">
           Resultados
         </h2>
@@ -123,42 +149,52 @@ export default function AlertasPage() {
         )}
 
         {!cargando && !error && alertas.length === 0 && (
-          <p className="rounded-md border border-gray-200 bg-white p-6 text-center text-gray-700">
+          <p className="rounded-md border border-linea bg-white p-6 text-center text-tinta-suave">
             No hay alertas que coincidan con los filtros.
           </p>
         )}
 
         {!cargando && !error && alertas.length > 0 && (
           <>
-            <p className="mb-3 text-sm text-gray-700" aria-live="polite">
-              {total} {total === 1 ? 'alerta encontrada' : 'alertas encontradas'}
-            </p>
-            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
-              <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
+            <div className="overflow-x-auto rounded-md border border-linea bg-white">
+              <table className="w-full min-w-[40rem] border-collapse text-left text-sm">
                 <caption className="sr-only">Alertas de deforestación, página {pagina + 1}</caption>
-                <thead className="bg-gray-50 text-gray-700">
-                  <tr>
-                    <th scope="col" className="px-4 py-3 font-semibold">Código</th>
-                    <th scope="col" className="px-4 py-3 font-semibold">Fuente</th>
-                    <th scope="col" className="px-4 py-3 font-semibold">Zona</th>
-                    <th scope="col" className="px-4 py-3 font-semibold">Detectada</th>
-                    <th scope="col" className="px-4 py-3 text-right font-semibold">Área (ha)</th>
-                    <th scope="col" className="px-4 py-3 font-semibold">Última carga</th>
+                <thead className="ancho-encabezado text-[13px] text-tinta-suave">
+                  <tr className="border-b-2 border-tinta">
+                    <th scope="col" className="px-5 py-3 font-semibold">Alerta</th>
+                    <th scope="col" className="px-3 py-3 font-semibold">Zona</th>
+                    <th scope="col" className="px-3 py-3 font-semibold">Detectada</th>
+                    <th scope="col" className="px-3 py-3 text-right font-semibold">Área (ha)</th>
+                    <th scope="col" className="px-5 py-3 font-semibold">En la última carga</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 text-gray-800">
+                <tbody>
                   {alertas.map((alerta) => (
-                    <tr key={alerta.id}>
-                      <td className="px-4 py-3 font-mono">{alerta.codigo}</td>
-                      <td className="px-4 py-3">{alerta.fuente}</td>
-                      <td className="px-4 py-3 font-mono">{alerta.zona_codigo}</td>
-                      <td className="px-4 py-3">{fechaLegible(alerta.fecha_deteccion)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{formatoArea.format(alerta.area_ha)}</td>
-                      <td className="px-4 py-3">
+                    <tr key={alerta.id} className="border-t border-linea-tenue">
+                      <td className="ancho-codigo h-12 px-5 font-semibold whitespace-nowrap">{alerta.codigo}</td>
+                      <td className="px-3">
+                        <button
+                          type="button"
+                          onClick={() => filtrarPorZona(alerta.zona_codigo)}
+                          title={`Ver solo la zona ${alerta.zona_codigo}`}
+                          className="ancho-codigo -ml-1.5 min-h-9 whitespace-nowrap rounded px-1.5 text-dosel underline decoration-linea-fuerte underline-offset-4 hover:decoration-dosel"
+                        >
+                          {alerta.zona_codigo}
+                        </button>
+                      </td>
+                      <td className="px-3 whitespace-nowrap text-tinta-suave">{fechaLegible(alerta.fecha_deteccion)}</td>
+                      <td className="px-3 text-right tabular-nums">{formatoArea.format(alerta.area_ha)}</td>
+                      <td className="px-5">
                         {alerta.presente_en_ultima_carga ? (
-                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-900">Presente</span>
+                          <span className="inline-flex items-center gap-2">
+                            <PuntoRelleno />
+                            Presente
+                          </span>
                         ) : (
-                          <span className="rounded-full bg-gray-200 px-2 py-0.5 text-gray-800">Ausente</span>
+                          <span className="inline-flex items-center gap-2 text-tinta-suave">
+                            <Aro />
+                            Ausente
+                          </span>
                         )}
                       </td>
                     </tr>
@@ -167,20 +203,22 @@ export default function AlertasPage() {
               </table>
             </div>
 
-            <nav aria-label="Paginación de alertas" className="mt-4 flex items-center justify-between gap-3">
-              <Button variant="secondary" onClick={() => setPagina((p) => p - 1)} disabled={pagina === 0}>
-                Anterior
-              </Button>
-              <span className="text-sm text-gray-700">
-                Página {pagina + 1} de {totalPaginas}
+            <nav aria-label="Paginación de alertas" className="flex flex-wrap items-center justify-between gap-3">
+              <span className="text-sm text-tinta-suave tabular-nums">
+                {desde}–{hasta} de {total}
               </span>
-              <Button
-                variant="secondary"
-                onClick={() => setPagina((p) => p + 1)}
-                disabled={pagina + 1 >= totalPaginas}
-              >
-                Siguiente
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => setPagina((p) => p - 1)} disabled={pagina === 0}>
+                  Anterior
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => setPagina((p) => p + 1)}
+                  disabled={pagina + 1 >= totalPaginas}
+                >
+                  Siguiente
+                </Button>
+              </div>
             </nav>
           </>
         )}

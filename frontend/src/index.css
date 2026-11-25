@@ -1,11 +1,80 @@
+/* Archivo se sirve desde el propio build (sin peticiones a terceros) con su eje de ancho (wdth 62–125 %):
+   expandida para títulos y cifras, condensada para encabezados de tabla y códigos. */
+@import "@fontsource-variable/archivo/wdth.css";
 @import "tailwindcss";
 
-:root {
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  color: #0f172a;
-  background: #f8fafc;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+/* Sistema visual cartográfico. Cada color tiene un único significado:
+   dosel = acciones y cuenta activa; pérdida = solo datos de alertas; río = Coordinación y foco. */
+@theme {
+  --font-sans: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --color-papel: #f4f6f1;
+  --color-tinta: #18231f;
+  --color-tinta-suave: #56635c;
+  --color-linea: #d5dcd2;
+  --color-linea-tenue: #e8ece5;
+  --color-linea-fuerte: #a9b4a6;
+
+  --color-dosel: #24533f;
+  --color-dosel-oscuro: #1a3e2f;
+  --color-dosel-tenue: #e7f0ea;
+
+  --color-perdida: #b8235f;
+  --color-perdida-tenue: #f1e3e9;
+
+  --color-rio: #2b5f86;
+
+  --color-ocre: #9a6400;
+  --color-ocre-texto: #5c3a00;
+  --color-ocre-tenue: #fbf1de;
+
+  --color-peligro: #b42318;
+  --color-peligro-texto: #7a1a12;
+  --color-peligro-tenue: #fceeec;
 }
 
-body { margin: 0; min-width: 320px; }
+@layer base {
+  :root {
+    font-family: var(--font-sans);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    background: var(--color-papel);
+    color: var(--color-tinta);
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-rio);
+    outline-offset: 2px;
+  }
+}
+
+/* Anchos tipográficos con nombre, para no repetir porcentajes en cada página. */
+@utility ancho-titulo {
+  font-stretch: 118%;
+  letter-spacing: -0.02em;
+}
+
+@utility ancho-seccion {
+  font-stretch: 110%;
+}
+
+@utility ancho-cifra {
+  font-stretch: 112%;
+  font-variant-numeric: tabular-nums;
+}
+
+@utility ancho-codigo {
+  font-stretch: 90%;
+  font-variant-numeric: tabular-nums;
+}
+
+@utility ancho-encabezado {
+  font-stretch: 80%;
+}
