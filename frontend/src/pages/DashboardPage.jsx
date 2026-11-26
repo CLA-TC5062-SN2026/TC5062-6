@@ -1,13 +1,16 @@
 // Panel principal tras iniciar sesión (ruta protegida).
 // Las cifras y el resumen por zona se calculan en el cliente con GET /alertas y GET /cargas-alertas:
 // el contrato aún no tiene un endpoint de resumen implementado (GET /zonas está especificado, no construido).
+// El mapa usa GET /mapa/capas/{capa}/elementos (RF-06): geometría real de PostGIS en EPSG:4326.
 
 import { Link } from 'react-router-dom';
 import ErrorAlert from '../components/ErrorAlert.jsx';
 import LoadingState from '../components/LoadingState.jsx';
+import MapaZonas from '../components/MapaZonas.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useApiQuery } from '../hooks/useApiQuery.js';
 import { LIMITE_MAXIMO, alertasService } from '../services/alertasService.js';
+import { mapaService } from '../services/mapaService.js';
 
 const formatoArea = new Intl.NumberFormat('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const formatoFecha = new Intl.DateTimeFormat('es-PE', { dateStyle: 'medium', timeZone: 'UTC' });
@@ -74,6 +77,14 @@ export default function DashboardPage() {
 function Resumen() {
   const alertas = useApiQuery(({ signal }) => alertasService.listar({ limite: LIMITE_MAXIMO, signal }), []);
   const cargas = useApiQuery(({ signal }) => alertasService.listarCargas({ signal }), []);
+  const mapa = useApiQuery(
+    ({ signal }) =>
+      Promise.all([
+        mapaService.elementos('zonas_cambio', { signal }),
+        mapaService.elementos('alertas_geobosques', { signal }),
+      ]),
+    [],
+  );
 
   const ultimaCarga = Array.isArray(cargas.datos) ? cargas.datos[0] : undefined;
   const lista = Array.isArray(alertas.datos?.alertas) ? alertas.datos.alertas : [];
@@ -108,12 +119,15 @@ function Resumen() {
 
       {!alertas.cargando && !alertas.error && total > 0 && (
         <>
-          <dl className="grid grid-cols-2 border-t-2 border-tinta md:grid-cols-4">
-            <Cifra etiqueta="Alertas cargadas" valor={total} />
-            <Cifra etiqueta="Zonas de cambio" valor={zonas.length} />
-            <Cifra etiqueta="Superficie alertada" valor={formatoArea.format(superficie)} unidad="ha" destacada />
-            <Cifra etiqueta="Ausentes en la última carga" valor={ausentes} />
-          </dl>
+          <div className="flex flex-wrap items-stretch gap-6">
+            <Mapa consulta={mapa} zonas={zonas} />
+            <dl className="grid flex-[1_1_240px] grid-cols-2 content-start border-t-2 border-tinta lg:grid-cols-1">
+              <Cifra etiqueta="Alertas cargadas" valor={total} />
+              <Cifra etiqueta="Zonas de cambio" valor={zonas.length} />
+              <Cifra etiqueta="Superficie alertada" valor={formatoArea.format(superficie)} unidad="ha" destacada />
+              <Cifra etiqueta="Ausentes en la última carga" valor={ausentes} />
+            </dl>
+          </div>
 
           {total > lista.length && (
             <p className="text-sm text-tinta-suave">
@@ -177,9 +191,67 @@ function Resumen() {
   );
 }
 
+/** Lámina del mapa con marco de hoja cartográfica; el resto del panel funciona aunque el mapa falle. */
+function Mapa({ consulta, zonas }) {
+  const [capaZonas, capaAlertas] = Array.isArray(consulta.datos) ? consulta.datos : [];
+  const featuresZonas = Array.isArray(capaZonas?.features) ? capaZonas.features : [];
+  const featuresAlertas = Array.isArray(capaAlertas?.features)
+    ? capaAlertas.features.filter((f) => f.geometry?.type === 'Point')
+    : [];
+  const superficiePorZona = Object.fromEntries(zonas.map((z) => [z.codigo, z.superficie]));
+
+  return (
+    <figure className="m-0 min-w-0 flex-[3_1_620px] border border-tinta bg-white p-1.5">
+      <div className="flex h-full flex-col border border-linea-fuerte">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 pt-3">
+          <figcaption className="ancho-seccion font-bold">Zonas de cambio con alertas</figcaption>
+          <span className="text-[13px] text-tinta-suave">Pulsa una zona para ver sus alertas</span>
+        </div>
+        <div className="grow px-2">
+          {consulta.cargando && <LoadingState mensaje="Cargando el mapa…" />}
+          {!consulta.cargando && consulta.error && (
+            <div className="p-3">
+              <ErrorAlert titulo="No se pudo cargar el mapa" mensaje={consulta.error.message} onReintentar={consulta.recargar} />
+            </div>
+          )}
+          {!consulta.cargando && !consulta.error && featuresZonas.length === 0 && (
+            <p className="p-6 text-tinta-suave">Todavía no hay zonas con geometría para dibujar.</p>
+          )}
+          {!consulta.cargando && !consulta.error && featuresZonas.length > 0 && (
+            // En pantallas angostas el mapa conserva un ancho legible y se desplaza dentro de su marco.
+            <div className="overflow-x-auto">
+              <div className="min-w-[640px]">
+                <MapaZonas zonas={featuresZonas} alertas={featuresAlertas} superficiePorZona={superficiePorZona} />
+              </div>
+            </div>
+          )}
+        </div>
+        <ul className="flex flex-wrap gap-x-5 gap-y-1 px-4 pb-3 text-[13px] text-tinta-suave">
+          <li className="flex items-center gap-2">
+            <svg aria-hidden="true" width="14" height="14"><rect x="1" y="1" width="12" height="12" fill="none" stroke="var(--color-tinta)" strokeWidth="1.5" /></svg>
+            Zona de cambio
+          </li>
+          <li className="flex items-center gap-2">
+            <svg aria-hidden="true" width="16" height="16"><circle cx="8" cy="8" r="7" fill="var(--color-perdida)" fillOpacity="0.14" stroke="var(--color-perdida)" strokeWidth="1.5" /></svg>
+            Superficie alertada (área del círculo)
+          </li>
+          <li className="flex items-center gap-2">
+            <svg aria-hidden="true" width="10" height="10"><circle cx="5" cy="5" r="4" fill="var(--color-perdida)" /></svg>
+            Alerta presente
+          </li>
+          <li className="flex items-center gap-2">
+            <svg aria-hidden="true" width="10" height="10"><circle cx="5" cy="5" r="3.5" fill="white" stroke="var(--color-tinta-suave)" strokeWidth="1.2" /></svg>
+            Ausente en la última carga
+          </li>
+        </ul>
+      </div>
+    </figure>
+  );
+}
+
 function Cifra({ etiqueta, valor, unidad, destacada = false }) {
   return (
-    <div className="flex flex-col gap-0.5 border-b border-linea py-4 pr-4 md:border-r md:last:border-r-0 md:[&:not(:first-child)]:pl-5">
+    <div className="flex flex-col gap-0.5 border-b border-linea py-4 pr-4 max-lg:odd:pr-4 max-lg:even:pl-4">
       <dt className="text-sm text-tinta-suave">{etiqueta}</dt>
       <dd className={`ancho-cifra text-4xl leading-none font-bold ${destacada ? 'text-perdida' : ''}`}>
         {valor}
