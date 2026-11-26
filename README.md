@@ -42,10 +42,12 @@ y consulta de alertas.
   desactivación/reactivación (las cuentas no se borran) y cambio obligatorio de la contraseña temporal (RF-02).
 - **Consulta de alertas** de GeoBosques paginada y filtrable, y lectura de cargas, marcas, ajustes e historial de zonas
   (parte de lectura de RF-04, RF-11, RF-12 y RF-13).
+- **Mapa de las zonas** en el panel: geometría real de PostGIS publicada en GeoJSON (EPSG:4326) por
+  `GET /mapa/capas/{capa}/elementos`, con un círculo proporcional a la superficie alertada de cada zona (parte de RF-06).
 - Control de acceso **en el servidor** (401/403) en todas las rutas, según la matriz de permisos del SRS (RNF-01, RNF-02).
 
-**Todavía no está construido** el núcleo geoespacial: ingesta de archivos, agrupación en zonas, mapa, cálculo de
-prioridad, comparación de periodos y exportación. Las alertas y zonas que se ven en la demo vienen de la semilla de
+**Todavía no está construido** el núcleo geoespacial: ingesta de archivos, agrupación en zonas, capas de referencia del
+mapa, cálculo de prioridad, comparación de periodos y exportación. Las alertas y zonas que se ven en la demo vienen de la semilla de
 demostración (`backend/scripts/sembrar_demo.py`). El detalle por requerimiento está en la
 [matriz de trazabilidad](S11_A1/matriz_trazabilidad.md).
 
@@ -53,7 +55,7 @@ demostración (`backend/scripts/sembrar_demo.py`). El detalle por requerimiento 
 
 | | |
 |---|---|
-| ![Inicio de sesión](S11_A1/capturas/01-login.png) **Inicio de sesión** — toda ruta protegida sin sesión redirige aquí. | ![Panel de Coordinación](S11_A1/capturas/02-panel-coordinacion.png) **Panel** — cifras y zonas ordenadas por superficie alertada, calculadas con las alertas cargadas. |
+| ![Inicio de sesión](S11_A1/capturas/01-login.png) **Inicio de sesión** — toda ruta protegida sin sesión redirige aquí. | ![Panel de Coordinación](S11_A1/capturas/02-panel-coordinacion.png) **Panel** — mapa de las zonas con su superficie alertada, cifras de la última carga y zonas ordenadas por superficie. |
 | ![Alertas](S11_A1/capturas/03-alertas.png) **Alertas** — 24 alertas de GeoBosques desde PostGIS, con filtros y paginación. | ![Usuarios](S11_A1/capturas/04-usuarios-creado.png) **Gestión de usuarios** — alta de una cuenta de Analista SIG. |
 | ![Error 409](S11_A1/capturas/05-error-ultima-coordinacion.png) **Error manejado** — el servidor impide desactivar la última cuenta de Coordinación (409). | ![Cambio de contraseña](S11_A1/capturas/06-cambiar-password.png) **Primer ingreso** — la cuenta nueva debe reemplazar su contraseña temporal. |
 
@@ -215,7 +217,7 @@ documentación interactiva queda en <http://127.0.0.1:8000/docs>.
 
 | Suite | Comando | Resultado verificado (24/11/2026) | Evidencia |
 |---|---|---|---|
-| Backend: CRUD, lecturas, contrato, integridad SQL e integración (`backend/tests/`) y seguridad JWT (`S05_S06_A2/pruebas/`) | `cd backend && .venv/bin/python -m pytest` | **234 de 234** (110 + 124) | [`pytest_backend.txt`](S11_A1/evidencias/pytest_backend.txt) |
+| Backend: CRUD, lecturas, contrato, integridad SQL e integración (`backend/tests/`) y seguridad JWT (`S05_S06_A2/pruebas/`) | `cd backend && .venv/bin/python -m pytest` | **247 de 247** (121 + 126) | [`pytest_backend.txt`](S11_A1/evidencias/pytest_backend.txt) |
 | Frontend: servicios, rutas protegidas y páginas | `npm --prefix frontend test` | **45 de 45** | [`vitest_frontend.txt`](S11_A1/evidencias/vitest_frontend.txt) |
 | E2E del flujo de la demo (13 pasos, navegador real) | ver cabecera de [`flujo_e2e.cjs`](S11_A1/evidencias/flujo_e2e.cjs) | Aprobado en local y en el Codespace, sin errores inesperados de consola | [`e2e_local.txt`](S11_A1/evidencias/e2e_local.txt) · [`e2e_codespace.txt`](S11_A1/evidencias/e2e_codespace.txt) |
 | Colección Postman del backend | ver [`backend/README.md`](backend/README.md#colección-postman-del-backend-final) | 58 aserciones, 0 fallos (25/10/2026) | `S05_S06_A2/evidencias/newman_backend_final.txt` |
@@ -286,7 +288,7 @@ SPA llega a la API (401 sin token).
 
 ## 9. API implementada
 
-20 de las 39 operaciones del contrato, todas bajo `/api/v1` y con JWT salvo el login. Tabla completa (incluidas las
+21 de las 39 operaciones del contrato, todas bajo `/api/v1` y con JWT salvo el login. Tabla completa (incluidas las
 pendientes) en [`backend/docs/integracion.md`](backend/docs/integracion.md#7-estado-de-las-39-operaciones-del-contrato-integrado).
 
 | Módulo | Operaciones | Roles |
@@ -295,6 +297,7 @@ pendientes) en [`backend/docs/integracion.md`](backend/docs/integracion.md#7-est
 | Usuarios | `GET /usuarios` · `POST /usuarios` · `GET /usuarios/{id}` · `PUT /usuarios/{id}` · `PATCH /usuarios/{id}` | Coordinación |
 | Alertas y cargas | `GET /alertas` · `GET /cargas-alertas` · `GET /cargas-alertas/{id}` · `GET /trabajos/{id}` | ambos |
 | Revisión de zonas (lectura) | `GET /zonas/{codigo}/marcas[/{id}]` · `/ajustes[/{id}]` · `/historial[/{id}]` | ambos |
+| Mapa | `GET /mapa/capas/{capaMapaId}/elementos` (GeoJSON en EPSG:4326, recorte opcional `bbox`) | ambos |
 | Operación | `GET /salud` (fuera de `/api/v1`, público) | — |
 
 ## 10. Estructura del repositorio

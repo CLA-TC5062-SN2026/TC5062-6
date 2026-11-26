@@ -104,8 +104,8 @@ equipo debe aceptarlo o acordar otra solución antes de publicar.
 
 ## 7. Estado de las 39 operaciones del contrato integrado
 
-**20 implementadas y 19 pendientes.** Se obtuvo comparando el contrato con las rutas que monta la aplicación; `tests/test_contrato.py`
-comprueba que las 20 implementadas están en el contrato y que no hay rutas fuera de él.
+**21 implementadas y 18 pendientes** (20 hasta S09; en S11 se agregó `obtenerElementosCapa`). Se obtuvo comparando el contrato con las rutas que monta la aplicación; `tests/test_contrato.py`
+comprueba que las 21 implementadas están en el contrato y que no hay rutas fuera de él.
 
 | Módulo | Método | Ruta (`/api/v1`) | Operación | Roles | Estado |
 |---|---|---|---|---|---|
@@ -135,7 +135,7 @@ comprueba que las 20 implementadas están en el contrato y que no hay rutas fuer
 | Capas de referencia | `POST` | `/capas-referencia/{tipoCapa}/versiones` | cargarVersionCapa | analista | Pendiente |
 | Alertas | `POST` | `/cargas-alertas` | ingerirAlertas | analista | Pendiente |
 | Mapa | `GET` | `/mapa/capas` | listarCapasMapa | ambos | Pendiente |
-| Mapa | `GET` | `/mapa/capas/{capaMapaId}/elementos` | obtenerElementosCapa | ambos | Pendiente |
+| Mapa | `GET` | `/mapa/capas/{capaMapaId}/elementos` | obtenerElementosCapa | ambos | Implementada (S11) |
 | Mapa | `GET` | `/mapa/capas/{capaMapaId}/elementos/{elementoId}` | obtenerElementoCapa | ambos | Pendiente |
 | Zonas | `GET` | `/zonas` | listarZonas | ambos | Pendiente |
 | Zonas | `GET` | `/zonas/{codigo}` | obtenerZona | ambos | Pendiente |

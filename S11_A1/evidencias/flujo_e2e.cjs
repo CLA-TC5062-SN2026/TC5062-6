@@ -56,6 +56,7 @@ const PROPIA = 'Jorge-Propia-2026!';
   await login('coordinacion@ecoalert.pe', pw);
   await page.getByRole('heading', { name: 'Panel', exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Zonas por superficie alertada' }).waitFor();
+  await page.getByRole('group', { name: /Mapa de las zonas de cambio/ }).waitFor();
   paso('login de Coordinación');
   await foto('02-panel-coordinacion');
 
