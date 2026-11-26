@@ -121,4 +121,5 @@ def test_rutas_del_backend_estan_en_el_contrato(oas):
                for metodo in METODOS if metodo in item}
     assert {('put', '/usuarios/{usuarioId}'), ('post', '/auth/login'), ('post', '/auth/register')} <= backend
     assert backend <= operaciones(oas), f'Rutas implementadas fuera del contrato: {sorted(backend - operaciones(oas))}'
-    assert len(backend) == 20  # 15 de A1 + login, register, me, logout y cambio de contraseña de A2
+    # 15 de A1 + login, register, me, logout y cambio de contraseña de A2 + capa del mapa en GeoJSON (S11)
+    assert len(backend) == 21

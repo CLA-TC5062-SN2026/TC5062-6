@@ -10,7 +10,7 @@ from app import db
 from app.config import get_settings
 from app.dependencies import autenticar
 from app.errors import registrar_errores
-from app.routers import auth, consultas, usuarios
+from app.routers import auth, consultas, mapa, usuarios
 
 PREFIJO_API = '/api/v1'
 # OWASP REST Security Cheat Sheet: cabeceras para respuestas de API que no deben cachearse ni renderizarse.
@@ -59,6 +59,7 @@ def crear_app() -> FastAPI:
     protegidas.include_router(auth.protegido)
     protegidas.include_router(usuarios.router)
     protegidas.include_router(consultas.router)
+    protegidas.include_router(mapa.router)
     api.include_router(protegidas)
     app.include_router(api)
     return app

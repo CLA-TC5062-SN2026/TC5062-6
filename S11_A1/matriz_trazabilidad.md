@@ -6,9 +6,9 @@
 |---|---|
 | Requerimientos | [`S03_A1/SRS_equipo.md`](../S03_A1/SRS_equipo.md), línea base v1.0: 39 RF (17 Must, 13 Should, 9 Could) |
 | Historias de usuario | [`S03_A1/backlog_completo.md`](../S03_A1/backlog_completo.md): 15 HU en 5 épicas |
-| Endpoints | [`backend/docs/openapi_integrado.yaml`](../backend/docs/openapi_integrado.yaml) v1.3.0: 39 operaciones, 20 implementadas |
-| Pruebas | `backend/tests/` y `S05_S06_A2/pruebas/` (pytest, **234/234**), `frontend/src/**/*.test.*` (Vitest, **45/45**), E2E [`evidencias/flujo_e2e.cjs`](evidencias/flujo_e2e.cjs) (Playwright) |
-| Corte | Rama `feat/S11_A1-documentacion-final`, 24/11/2026. Cada resultado se reprodujo en esa fecha; las salidas están en [`evidencias/`](evidencias/). |
+| Endpoints | [`backend/docs/openapi_integrado.yaml`](../backend/docs/openapi_integrado.yaml) v1.3.0: 39 operaciones, 21 implementadas |
+| Pruebas | `backend/tests/` y `S05_S06_A2/pruebas/` (pytest, **247/247**), `frontend/src/**/*.test.*` (Vitest, **49/49**), E2E [`evidencias/flujo_e2e.cjs`](evidencias/flujo_e2e.cjs) (Playwright) |
+| Corte | Rama `feat/S11-mapa-zonas`, 25/11/2026 (primer corte: `feat/S11_A1-documentacion-final`, 24/11/2026). Cada resultado se reprodujo en esa fecha; las salidas están en [`evidencias/`](evidencias/). |
 
 ## 1. Cómo se clasificó cada requerimiento
 
@@ -30,14 +30,14 @@ Dos reglas para no inflar el estado:
 
 | Prioridad | RF | ✅ Completo | 🟡 Parcial | ❌ No implementado |
 |---|---:|---:|---:|---:|
-| Must (MVP) | 17 | 2 (RF-01, RF-02) | 4 (RF-04, RF-11, RF-12, RF-13) | 11 |
+| Must (MVP) | 17 | 2 (RF-01, RF-02) | 5 (RF-04, RF-06, RF-11, RF-12, RF-13) | 10 |
 | Should | 13 | 0 | 0 | 13 |
 | Could | 9 | 0 | 0 | 9 |
-| **Total** | **39** | **2** | **4** | **33** |
+| **Total** | **39** | **2** | **5** | **32** |
 
 El MVP del SRS **no está completo**: se construyó la capa de acceso y administración (RF-01, RF-02), la consulta de los
-datos y el contrato completo de la API, pero no el núcleo geoespacial (ingesta, agrupación, prioridad, mapa,
-comparación y exportación). La [retrospectiva](retrospectiva_proyecto.md#b2-qué-partes-del-problema-no-se-resolvieron)
+datos, un mapa de las zonas existentes y el contrato completo de la API, pero no el núcleo geoespacial (ingesta,
+agrupación, prioridad, capas de referencia del mapa, comparación y exportación). La [retrospectiva](retrospectiva_proyecto.md#b2-qué-partes-del-problema-no-se-resolvieron)
 explica por qué.
 
 ## 3. Matriz completa (RF → HU → endpoint → prueba)
@@ -54,7 +54,7 @@ Rutas relativas a `/api/v1`. Abreviaturas de pruebas: **[A2]** `S05_S06_A2/prueb
 | RF-03 | Carga de capas de referencia | HU-E2-1 | — *(diseñados: `POST /archivos`, `GET/POST /capas-referencia/…`)* | — | ❌ | Era el compromiso del Sprint 1 y no se construyó: las actividades siguientes del curso pidieron CRUD, autenticación y frontend, y el equipo priorizó entregarlas. Solo existen las tablas (`capas_referencia`, `versiones_capa`) en el esquema. |
 | RF-04 | Ingesta de alertas GeoBosques | HU-E2-2 | `GET /alertas` · `GET /cargas-alertas` · `GET /cargas-alertas/{id}` · `GET /trabajos/{id}` *(pendiente: `POST /archivos`, `POST /cargas-alertas`)* | [BE] `test_api_lecturas.py::test_alertas_*`, `test_cargas_*`, `test_trabajos_*`; [FE] `AlertasPage.test.jsx`; [E2E] paso 4 | 🟡 | Se consultan alertas y cargas con paginación y filtros, pero no se pueden **ingerir**: las 24 alertas de la demo vienen de `scripts/sembrar_demo.py`. Ningún criterio RF-04-AC-1 a AC-7 se cumple todavía. |
 | RF-05 | Agrupación en zonas de cambio | HU-E3-1 | — *(diseñado: efecto de `POST /cargas-alertas`, `GET /zonas/{codigo}`)* | — | ❌ | Depende de la ingesta (RF-04). Es la historia de mayor riesgo técnico (13 SP, lógica espacial con PostGIS). |
-| RF-06 | Mapa con capas | HU-E3-2 | — *(diseñados: `GET /mapa/capas[/…]`)* | — | ❌ | Sin zonas ni capas cargadas no hay qué dibujar; además no se eligió biblioteca de mapas en el frontend. |
+| RF-06 | Mapa con capas | HU-E3-2 | `GET /mapa/capas/{capaMapaId}/elementos` *(pendientes: `GET /mapa/capas` y `…/elementos/{elementoId}`)* | [BE] `test_api_mapa.py::test_RF_06_AC_2_…`, `::test_RF_06_AC_6_…` (+9 de bbox, capas y errores); [FE] `DashboardPage.test.jsx` (mapa) | 🟡 | AC-2 y AC-6 cumplidos: la API publica cada zona con su geometría en EPSG:4326, su código y su nivel, y el catastro sin titular; el panel dibuja zonas y alertas en un mapa temático (S11). Falta AC-1 (listado de las 6 capas) y AC-3 a AC-5 (activar capas, color por nivel, abrir el detalle), y no hay capas de referencia cargadas.  |
 | RF-07 | Frescura de las fuentes | HU-E2-3 | — *(dato disponible: `fecha_corte` en `GET /cargas-alertas`)* | — | ❌ | La fecha de corte se guarda y se expone, pero no existe el aviso de "posiblemente desactualizadas" (> 30 días) ni el panel de capas. |
 | RF-08 | Contexto territorial de la zona | HU-E3-3 | — *(diseñado: `GET /zonas/{codigo}`)* | — | ❌ | Requiere zonas (RF-05) y capas (RF-03). |
 | RF-09 | Priorización explicada | HU-E4-1 | — *(diseñados: `GET /zonas`, `GET /zonas/{codigo}`)* | — | ❌ | Es el valor central del producto y no está construido. El esquema guarda `nivel` y `puntaje_vigente`, pero los valores de la demo son sembrados, no calculados. |

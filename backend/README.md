@@ -7,12 +7,13 @@ autenticación y seguridad de **S05-S06-A2** (JWT, sesiones, roles y protección
 `docs/integracion.md`. Las decisiones de seguridad están en `S05_S06_A2/revision_seguridad.md`.
 
 ## Alcance
-Implementa **20 de las 39 operaciones** del contrato integrado:
+Implementa **21 de las 39 operaciones** del contrato integrado:
 
 - **Autenticación (A2):** `POST /auth/login`, `POST /auth/register` (solo Coordinación), `GET /auth/me`, `POST /auth/logout` y `PUT /auth/password`.
 - **Usuarios (A1):** listar, crear (idempotente), consultar, reemplazar (`PUT`) y actualizar parcialmente (`PATCH`).
 - **Consultas (A1):** alertas (paginadas, con filtros), cargas, marcas, ajustes, historial y trabajos.
-- **Pendiente según el contrato:** ingesta de archivos, procesamiento asíncrono, zonas y mapa, prioridad, cambios de estado, creación y retiro de ajustes y marcas, comparación de periodos y exportación. No se simulan como implementadas.
+- **Mapa (S11):** `GET /mapa/capas/{capaMapaId}/elementos`, FeatureCollection GeoJSON en EPSG:4326 (RFC 7946) con recorte opcional `bbox`; las capas de referencia usan su versión vigente y el catastro nunca publica al titular.
+- **Pendiente según el contrato:** ingesta de archivos, procesamiento asíncrono, lista y detalle de zonas, listado de capas del mapa y elemento individual, prioridad, cambios de estado, creación y retiro de ajustes y marcas, comparación de periodos y exportación. No se simulan como implementadas.
 
 Las cuentas, zonas y análisis **no tienen DELETE** por diseño (RF-02-AC-7, RF-12-AC-17, RF-15-AC-3): responden 405.
 **Toda la API de `/api/v1` exige JWT**, salvo `POST /auth/login`; los clientes que no enviaban `Authorization` (p. ej. las colecciones Postman originales de A1) reciben 401.

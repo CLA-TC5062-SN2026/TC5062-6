@@ -159,7 +159,7 @@ Copiar `.env.example` a `.env` (no se versiona):
 ## 9. Verificación del funcionamiento
 
 ```bash
-npm test          # 45 pruebas (Vitest + Testing Library)
+npm test          # 49 pruebas (Vitest + Testing Library)
 npm run build     # compilación de producción con Content-Security-Policy
 ```
 

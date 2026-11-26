@@ -21,7 +21,7 @@ El reparto es una propuesta: si el equipo cambia quién dice qué, solo hay que 
 | ✔ | Verificación (las cuatro primeras las pide la tarea) | Cómo |
 |---|---|---|
 | ☐ | Backend y frontend levantados y comunicándose sin errores de CORS | `gh codespace ssh -c <nombre> -- 'cd /workspaces/TC5062-6 && bash .devcontainer/levantar.sh'` termina con `SPA → API: OK`, y el puerto 4173 está **público** (`gh codespace ports visibility 4173:public -c <nombre>`; vuelve a privado cada vez que el Codespace se reinicia). Abrir la URL pública → *Continue* en el aviso de GitHub → carga el login. La API va por el mismo origen (`/api/v1`), así que no puede haber CORS. |
-| ☐ | Usuario de demo creado y con datos reales cargados | Iniciar sesión como Coordinación: el **Panel** muestra 24 alertas, 6 zonas y 30.28 ha. |
+| ☐ | Usuario de demo creado y con datos reales cargados | Iniciar sesión como Coordinación: el **Panel** muestra el mapa con 6 zonas, 24 alertas y 30.28 ha. |
 | ☐ | Sin errores en la consola del navegador | DevTools → Console con "Preserve log", limpiar antes de empezar. Solo deben aparecer los dos errores provocados: el 401 del login fallido y el 409. Cerrar DevTools antes de grabar. |
 | ☐ | El micrófono se escucha con claridad | Cada narrador graba 10 s y se escucha. |
 | ☐ | Solo una cuenta de Coordinación activa | En **Usuarios**, solo `coordinacion@ecoalert.pe` tiene rol Coordinación y está Activa (si no, el 409 no aparece). |
@@ -47,8 +47,8 @@ El reparto es una propuesta: si el equipo cambia quién dice qué, solo hay que 
 | Tiempo | En pantalla | Qué dice Miguel |
 |---|---|---|
 | 0:30–0:50 | Escribir `/dashboard` en la barra de direcciones → redirige al login. Ingresar `coordinacion@ecoalert.pe` con una contraseña incorrecta → *Ingresar*. | "Sin sesión, cualquier pantalla lleva al login. Con una contraseña incorrecta, el servidor responde 401 con un mensaje genérico que no revela si el correo existe." |
-| 0:50–1:15 | Escribir la contraseña correcta → *Ingresar* → **Panel**. Señalar las cifras y la tabla. | "La coordinadora entra al panel. Son datos reales guardados en PostGIS: 24 alertas de GeoBosques en 6 zonas de cambio, 30.28 hectáreas alertadas. La tabla responde la primera pregunta del analista: dónde se concentra la pérdida. La zona 101 suma 12.40 hectáreas, el 41 % de todo lo alertado. Ojo: está ordenada por superficie, todavía no por una prioridad calculada." |
-| 1:15–1:35 | Pulsar `EA-2026-101` → **Alertas** filtradas a esa zona. Señalar `GB-2026-0004` (Ausente). Pulsar el segmento *Ausentes* y luego *Todas*. | "Al pulsar la zona veo sus cuatro alertas. Tres siguen presentes en la última carga y una ya no vino en el archivo de GeoBosques, algo que el analista necesita saber antes de planear la visita a campo." |
+| 0:50–1:15 | Escribir la contraseña correcta → *Ingresar* → **Panel**. Señalar el mapa, luego las cifras de la derecha. | "La coordinadora entra al panel. Son datos reales guardados en PostGIS: 24 alertas de GeoBosques en 6 zonas de cambio, 30.28 hectáreas alertadas. El mapa responde la primera pregunta del analista: dónde se concentra la pérdida. Cada cuadro es una zona en su ubicación real y el círculo crece con la superficie alertada: la zona 101 suma 12.40 hectáreas, el 41 % de todo lo alertado. Ojo: el tamaño es superficie, todavía no una prioridad calculada." |
+| 1:15–1:35 | Pulsar `EA-2026-101` **en el mapa** → **Alertas** filtradas a esa zona. Señalar `GB-2026-0004` (Ausente). Pulsar el segmento *Ausentes* y luego *Todas*. | "Al pulsar la zona veo sus cuatro alertas. Tres siguen presentes en la última carga y una ya no vino en el archivo de GeoBosques, algo que el analista necesita saber antes de planear la visita a campo." |
 
 ### 1:35–3:20 · Demo 2: CRUD de cuentas y caso de error — Anthony
 
@@ -82,7 +82,7 @@ editan.
 
 ### 4:15–4:40 · Qué haríamos diferente — Daniel
 
-**En pantalla:** pestaña 4, el resumen de la matriz de trazabilidad (2 completos, 4 parciales, 33 no implementados).
+**En pantalla:** pestaña 4, el resumen de la matriz de trazabilidad (2 completos, 5 parciales, 32 no implementados).
 
 > "La limitación real es que el núcleo del producto no está construido: la carga de alertas desde un archivo, la
 > agrupación automática en zonas y el cálculo de su prioridad. Por eso la matriz marca 2 requerimientos completos de 39.
